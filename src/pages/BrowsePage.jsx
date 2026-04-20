@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';  // ← ADD THIS
+import { Link } from 'react-router-dom';
 import SearchBar from '../components/SearchBar';
 import NoteList from '../components/NoteList';
 
@@ -11,23 +11,24 @@ const BrowsePage = ({ notes }) => {
       setFilteredNotes(notes);
       return;
     }
-    const filtered = notes.filter(note =>
+
+    const filtered = notes.filter((note) =>
       note.title.toLowerCase().includes(query.toLowerCase()) ||
       note.subject.toLowerCase().includes(query.toLowerCase()) ||
       note.content.toLowerCase().includes(query.toLowerCase())
     );
+
     setFilteredNotes(filtered);
   };
 
   return (
     <div className="page">
-      <h1>🔍 Browse All Notes</h1>
-      <SearchBar onSearch={handleSearch} />
-      
-      <div className="filters">
+      <h1>Browse All Notes</h1>
+      <div className="upload-subtitle">
         <p>{filteredNotes.length} notes found</p>
       </div>
-      
+      <SearchBar onSearch={handleSearch} />
+
       {filteredNotes.length > 0 ? (
         <NoteList notes={filteredNotes} />
       ) : (

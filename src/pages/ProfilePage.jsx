@@ -1,15 +1,15 @@
 import React from 'react';
-import { Link } from 'react-router-dom';  // ← ADD THIS
+import { Link } from 'react-router-dom';
 import NoteList from '../components/NoteList';
 
 const ProfilePage = ({ notes }) => {
-  const userNotes = notes.filter((_, index) => index < 2);
+  const userNotes = notes.filter((note) => note.author === 'You').reverse();
 
   return (
     <div className="page">
-      <h1>👤 Your Profile</h1>
-      <div className="profile-stats">
-        <h3>You've uploaded {userNotes.length} notes</h3>
+      <h1>Your Profile</h1>
+      <div className="upload-subtitle">
+        <p>You've uploaded {userNotes.length} notes</p>
         <p>Help more students by uploading new notes!</p>
       </div>
       <h2>Your Notes</h2>

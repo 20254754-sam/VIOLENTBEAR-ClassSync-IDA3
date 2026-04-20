@@ -1,14 +1,14 @@
 import React from 'react';
-import { Link } from 'react-router-dom';  // ← ADD THIS
+import { Link } from 'react-router-dom';
 import NoteList from '../components/NoteList';
 
 const HomePage = ({ notes }) => {
   const recentNotes = notes.slice(-3);
-  
+
   return (
     <div className="page">
       <section className="hero">
-        <h1>📚 Share & Study Together</h1>
+        <h1>🕮 Share & Study Together</h1>
         <p>Access class notes from students across all subjects</p>
       </section>
       <section>
