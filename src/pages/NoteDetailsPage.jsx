@@ -13,6 +13,7 @@ const NoteDetailsPage = ({ notes, currentUser, onToggleLike, onDelete, onEdit, o
   const navigate = useNavigate();
   const note = notes.find((item) => item.id === Number(id));
   const [reviewForm, setReviewForm] = useState({ rating: '5', text: '' });
+  const ratingOptions = [1, 2, 3, 4, 5];
 
   const hasSource = note?.isOwnWork === false && note?.source;
   const isUploader = note && currentUser && note.uploaderId === currentUser.id;
@@ -161,16 +162,29 @@ const NoteDetailsPage = ({ notes, currentUser, onToggleLike, onDelete, onEdit, o
 
         <form className="review-form" onSubmit={handleReviewSubmit}>
           <div className="review-form-row">
-            <select
-              value={reviewForm.rating}
-              onChange={(event) => setReviewForm((currentForm) => ({ ...currentForm, rating: event.target.value }))}
-            >
-              <option value="5">5 stars</option>
-              <option value="4">4 stars</option>
-              <option value="3">3 stars</option>
-              <option value="2">2 stars</option>
-              <option value="1">1 star</option>
-            </select>
+            <div className="star-rating-picker" aria-label="Choose your rating">
+              {ratingOptions.map((ratingValue) => {
+                const isActive = Number(reviewForm.rating) >= ratingValue;
+
+                return (
+                  <button
+                    key={ratingValue}
+                    type="button"
+                    className={`star-rating-button ${isActive ? 'star-rating-button-active' : ''}`}
+                    aria-label={`${ratingValue} star${ratingValue > 1 ? 's' : ''}`}
+                    onClick={() =>
+                      setReviewForm((currentForm) => ({
+                        ...currentForm,
+                        rating: String(ratingValue)
+                      }))
+                    }
+                  >
+                    ★
+                  </button>
+                );
+              })}
+              <span className="star-rating-value">{reviewForm.rating} / 5</span>
+            </div>
             <textarea
               value={reviewForm.text}
               onChange={(event) => setReviewForm((currentForm) => ({ ...currentForm, text: event.target.value }))}
@@ -187,7 +201,10 @@ const NoteDetailsPage = ({ notes, currentUser, onToggleLike, onDelete, onEdit, o
               <article key={review.id} className="review-card">
                 <div className="review-card-header">
                   <strong>{review.userName}</strong>
-                  <span>{review.rating} / 5</span>
+                  <span className="review-stars" aria-label={`${review.rating} out of 5 stars`}>
+                    {'★'.repeat(review.rating)}
+                    <small>{review.rating} / 5</small>
+                  </span>
                 </div>
                 <p>{review.text}</p>
                 <small>{formatDate(review.createdAt)}</small>

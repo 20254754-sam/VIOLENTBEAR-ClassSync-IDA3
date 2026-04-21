@@ -1,8 +1,18 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 const Navbar = ({ currentUser, onLogout, theme, onToggleTheme, pendingCount }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  useEffect(() => {
+    document.body.classList.toggle('nav-scroll-locked', isMenuOpen);
+    document.documentElement.classList.toggle('nav-scroll-locked', isMenuOpen);
+
+    return () => {
+      document.body.classList.remove('nav-scroll-locked');
+      document.documentElement.classList.remove('nav-scroll-locked');
+    };
+  }, [isMenuOpen]);
 
   const handleLinkClick = () => {
     setIsMenuOpen(false);
@@ -16,7 +26,7 @@ const Navbar = ({ currentUser, onLogout, theme, onToggleTheme, pendingCount }) =
 
       <button
         type="button"
-        className="nav-toggle"
+        className={`nav-toggle ${isMenuOpen ? 'nav-toggle-open' : ''}`}
         aria-label={isMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
         aria-expanded={isMenuOpen}
         onClick={() => setIsMenuOpen((open) => !open)}
