@@ -1,233 +1,339 @@
-import React, { useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
-const UploadForm = ({ onSubmit, notes = [] }) => {
-  const [title, setTitle] = useState('');
-  const [subject, setSubject] = useState('Web Development');
-  const [customSubject, setCustomSubject] = useState('');
-  const [showCustom, setShowCustom] = useState(false);
-  const [content, setContent] = useState('');
-  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+const SUBJECTS = [
+  'Web Development',
+  'Mobile App Development',
+  'Database Systems',
+  'Data Structures',
+  'Algorithms',
+  'Software Engineering',
+  'Networking',
+  'Cybersecurity',
+  'Artificial Intelligence',
+  'Cloud Computing',
+  'Java Programming',
+  'Python Programming',
+  'Operating Systems'
+];
 
-  const [isOwnWork, setIsOwnWork] = useState(null);
-  const [sourceType, setSourceType] = useState('');
-  const [sourceTitle, setSourceTitle] = useState('');
-  const [author, setAuthor] = useState('');
-  const [link, setLink] = useState('');
-  const [year, setYear] = useState('');
+const emptyForm = {
+  title: '',
+  subject: 'Web Development',
+  customSubject: '',
+  useCustomSubject: false,
+  content: '',
+  isOwnWork: '',
+  sourceType: '',
+  sourceTitle: '',
+  sourceAuthor: '',
+  sourceLink: '',
+  sourceYear: ''
+};
 
-  const subjects = [
-    'Web Development', 'Mobile App Dev', 'Database Systems',
-    'Data Structures', 'Algorithms', 'Software Engineering',
-    'Networking', 'Cybersecurity', 'AI & Machine Learning',
-    'Cloud Computing', 'Java Programming', 'Python Programming',
-    'C++ Programming', 'Operating Systems', 'Computer Graphics'
-  ];
+const UploadForm = ({ onSubmit, editingNote, onCancelEdit }) => {
+  const [form, setForm] = useState(emptyForm);
+  const [errors, setErrors] = useState({});
+  const [submitted, setSubmitted] = useState(false);
+  const [popupMessage, setPopupMessage] = useState('');
 
-  const handleSubjectChange = useCallback((e) => {
-    const value = e.target.value;
-    setSubject(value);
-    setShowCustom(value === 'custom');
-    if (value !== 'custom') setCustomSubject('');
-  }, []);
-
-  const handleCustomSubject = useCallback((e) => {
-    setCustomSubject(e.target.value);
-    setSubject(e.target.value);
-  }, []);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-
-    if (!title.trim() || !content.trim()) {
-      alert('Please fill title and content');
+  useEffect(() => {
+    if (editingNote) {
+      setForm({
+        title: editingNote.title,
+        subject: editingNote.subject,
+        customSubject: '',
+        useCustomSubject: !SUBJECTS.includes(editingNote.subject),
+        content: editingNote.content,
+        isOwnWork: editingNote.isOwnWork ? 'yes' : 'no',
+        sourceType: editingNote.source?.type || '',
+        sourceTitle: editingNote.source?.title || '',
+        sourceAuthor: editingNote.source?.author || '',
+        sourceLink: editingNote.source?.link || '',
+        sourceYear: editingNote.source?.year || ''
+      });
+      setErrors({});
+      setSubmitted(false);
       return;
     }
 
-    if (isOwnWork === null) {
-      alert('Please select if this is your own work');
-      return;
+    setForm(emptyForm);
+    setErrors({});
+    setSubmitted(false);
+  }, [editingNote]);
+
+  const finalSubject = useMemo(
+    () => (form.useCustomSubject ? form.customSubject.trim() : form.subject),
+    [form.customSubject, form.subject, form.useCustomSubject]
+  );
+
+  const validateForm = () => {
+    const nextErrors = {};
+
+    if (!form.title.trim()) {
+      nextErrors.title = 'Title is required.';
     }
 
-    if (!isOwnWork) {
-      if (!sourceType || !sourceTitle.trim()) {
-        alert('Please provide source details');
-        return;
+    if (!finalSubject.trim()) {
+      nextErrors.subject = 'Subject is required.';
+    }
+
+    if (!form.content.trim()) {
+      nextErrors.content = 'Content is required.';
+    }
+
+    if (!form.isOwnWork) {
+      nextErrors.isOwnWork = 'Please tell us if this note is your own work.';
+    }
+
+    if (form.isOwnWork === 'no') {
+      if (!form.sourceType.trim()) {
+        nextErrors.sourceType = 'Source type is required.';
       }
 
-      if (sourceType === 'Website' && !link.trim()) {
-        alert('Please provide a link for website sources');
-        return;
+      if (!form.sourceTitle.trim()) {
+        nextErrors.sourceTitle = 'Source title is required.';
+      }
+
+      if (form.sourceType === 'Website' && !form.sourceLink.trim()) {
+        nextErrors.sourceLink = 'Please provide the source link.';
       }
     }
 
-    const finalSubject = showCustom ? customSubject.trim() : subject;
-
-    const newNote = {
-      id: notes.length + 1,
-      title: title.trim(),
-      subject: finalSubject,
-      content: content.trim(),
-      author: 'You',
-      date: new Date().toISOString().split('T')[0],
-      isOwnWork,
-      source: !isOwnWork ? {
-        type: sourceType,
-        title: sourceTitle,
-        author,
-        link,
-        year
-      } : null
-    };
-
-    onSubmit(newNote);
-
-    setTitle('');
-    setContent('');
-    setShowCustom(false);
-    setCustomSubject('');
-    setSubject('Web Development');
-    setIsOwnWork(null);
-    setSourceType('');
-    setSourceTitle('');
-    setAuthor('');
-    setLink('');
-    setYear('');
-    setShowSuccessPopup(true);
+    return nextErrors;
   };
+
+  const handleChange = (event) => {
+    const { name, value } = event.target;
+    setForm((currentForm) => ({ ...currentForm, [name]: value }));
+  };
+
+  const handleSubjectChange = (event) => {
+    const value = event.target.value;
+    setForm((currentForm) => ({
+      ...currentForm,
+      subject: value,
+      useCustomSubject: value === 'custom',
+      customSubject: value === 'custom' ? currentForm.customSubject : ''
+    }));
+  };
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    setSubmitted(true);
+
+    const nextErrors = validateForm();
+    setErrors(nextErrors);
+
+    if (Object.keys(nextErrors).length > 0) {
+      return;
+    }
+
+    const result = onSubmit({
+      title: form.title.trim(),
+      subject: finalSubject,
+      content: form.content.trim(),
+      isOwnWork: form.isOwnWork === 'yes',
+      source:
+        form.isOwnWork === 'no'
+          ? {
+              type: form.sourceType,
+              title: form.sourceTitle.trim(),
+              author: form.sourceAuthor.trim(),
+              link: form.sourceLink.trim(),
+              year: form.sourceYear.trim()
+            }
+          : null
+    });
+
+    if (!result.success) {
+      return;
+    }
+
+    setPopupMessage(result.message);
+    setForm(emptyForm);
+    setErrors({});
+    setSubmitted(false);
+  };
+
+  const fieldClassName = (fieldName) =>
+    submitted && errors[fieldName] ? 'form-control field-error' : 'form-control';
 
   return (
     <>
       <form onSubmit={handleSubmit} className="upload-form">
         <div className="form-group">
-          <label>Title:</label>
+          <label htmlFor="title">Title</label>
           <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            required
+            id="title"
+            name="title"
+            className={fieldClassName('title')}
+            value={form.title}
+            onChange={handleChange}
+            placeholder="Enter your note title"
           />
+          {submitted && errors.title && <p className="field-error-text">{errors.title}</p>}
         </div>
 
         <div className="form-group">
-          <label>Subject:</label>
-          <div className="subject-wrapper">
-            <select value={subject} onChange={handleSubjectChange}>
-              {subjects.map((sub) => (
-                <option key={sub} value={sub}>{sub}</option>
-              ))}
-              <option value="custom">Custom...</option>
-            </select>
-
-            {showCustom && (
-              <input
-                value={customSubject}
-                onChange={handleCustomSubject}
-                placeholder="Enter subject"
-              />
-            )}
-          </div>
+          <label htmlFor="subject">Subject</label>
+          <select
+            id="subject"
+            name="subject"
+            className={fieldClassName('subject')}
+            value={form.useCustomSubject ? 'custom' : form.subject}
+            onChange={handleSubjectChange}
+          >
+            {SUBJECTS.map((subject) => (
+              <option key={subject} value={subject}>
+                {subject}
+              </option>
+            ))}
+            <option value="custom">Custom subject</option>
+          </select>
+          {form.useCustomSubject && (
+            <input
+              name="customSubject"
+              className={fieldClassName('subject')}
+              value={form.customSubject}
+              onChange={handleChange}
+              placeholder="Type your custom subject"
+            />
+          )}
+          {submitted && errors.subject && <p className="field-error-text">{errors.subject}</p>}
         </div>
 
         <div className="form-group">
-          <label>Content:</label>
+          <label htmlFor="content">Content</label>
           <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
+            id="content"
+            name="content"
+            className={fieldClassName('content')}
+            value={form.content}
+            onChange={handleChange}
             rows="10"
-            required
+            placeholder="Paste or type the note content here"
           />
+          {submitted && errors.content && <p className="field-error-text">{errors.content}</p>}
         </div>
 
         <div className="form-group">
           <label>Is this your own work?</label>
-          <div>
-            <label>
+          <div className={`radio-group ${submitted && errors.isOwnWork ? 'radio-group-error' : ''}`}>
+            <label className="radio-option">
               <input
                 type="radio"
-                name="ownership"
-                checked={isOwnWork === true}
-                onChange={() => setIsOwnWork(true)}
+                name="isOwnWork"
+                value="yes"
+                checked={form.isOwnWork === 'yes'}
+                onChange={handleChange}
               />
-              Yes
+              <span>Yes</span>
             </label>
-
-            <label style={{ marginLeft: '15px' }}>
+            <label className="radio-option">
               <input
                 type="radio"
-                name="ownership"
-                checked={isOwnWork === false}
-                onChange={() => setIsOwnWork(false)}
+                name="isOwnWork"
+                value="no"
+                checked={form.isOwnWork === 'no'}
+                onChange={handleChange}
               />
-              No
+              <span>No</span>
             </label>
           </div>
+          {submitted && errors.isOwnWork && <p className="field-error-text">{errors.isOwnWork}</p>}
         </div>
 
-        {isOwnWork === false && (
+        {form.isOwnWork === 'no' && (
           <div className="source-section">
-            <h4>Source Information</h4>
+            <h4>Source information</h4>
 
             <div className="form-group">
-              <label>Source Type:</label>
-              <select value={sourceType} onChange={(e) => setSourceType(e.target.value)}>
-                <option value="">Select Source</option>
+              <label htmlFor="sourceType">Source Type</label>
+              <select
+                id="sourceType"
+                name="sourceType"
+                className={fieldClassName('sourceType')}
+                value={form.sourceType}
+                onChange={handleChange}
+              >
+                <option value="">Select source type</option>
                 <option value="Book">Book</option>
                 <option value="Website">Website</option>
                 <option value="Lecture">Lecture</option>
-                <option value="Personal">Personal Notes</option>
+                <option value="Personal Notes">Personal Notes</option>
                 <option value="Other">Other</option>
               </select>
+              {submitted && errors.sourceType && <p className="field-error-text">{errors.sourceType}</p>}
             </div>
 
             <div className="form-group">
-              <label>Source Title:</label>
+              <label htmlFor="sourceTitle">Source Title</label>
               <input
-                value={sourceTitle}
-                onChange={(e) => setSourceTitle(e.target.value)}
+                id="sourceTitle"
+                name="sourceTitle"
+                className={fieldClassName('sourceTitle')}
+                value={form.sourceTitle}
+                onChange={handleChange}
+                placeholder="Enter the title of the reference"
+              />
+              {submitted && errors.sourceTitle && <p className="field-error-text">{errors.sourceTitle}</p>}
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="sourceAuthor">Author</label>
+              <input
+                id="sourceAuthor"
+                name="sourceAuthor"
+                className="form-control"
+                value={form.sourceAuthor}
+                onChange={handleChange}
+                placeholder="Optional author name"
               />
             </div>
 
             <div className="form-group">
-              <label>Author:</label>
+              <label htmlFor="sourceLink">Link</label>
               <input
-                value={author}
-                onChange={(e) => setAuthor(e.target.value)}
+                id="sourceLink"
+                name="sourceLink"
+                className={fieldClassName('sourceLink')}
+                value={form.sourceLink}
+                onChange={handleChange}
+                placeholder="Optional source link"
               />
+              {submitted && errors.sourceLink && <p className="field-error-text">{errors.sourceLink}</p>}
             </div>
 
             <div className="form-group">
-              <label>Link:</label>
+              <label htmlFor="sourceYear">Year</label>
               <input
-                value={link}
-                onChange={(e) => setLink(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Year:</label>
-              <input
-                type="number"
-                value={year}
-                onChange={(e) => setYear(e.target.value)}
+                id="sourceYear"
+                name="sourceYear"
+                className="form-control"
+                value={form.sourceYear}
+                onChange={handleChange}
+                placeholder="Optional year"
               />
             </div>
           </div>
         )}
 
-        <button type="submit">
-          Share with Classmates ({notes.length + 1})
-        </button>
+        <div className="form-button-row">
+          {editingNote && (
+            <button type="button" className="secondary-button" onClick={onCancelEdit}>
+              Cancel edit
+            </button>
+          )}
+          <button type="submit">{editingNote ? 'Update Note' : 'Share with Classmates'}</button>
+        </div>
       </form>
 
-      {showSuccessPopup && (
-        <div className="upload-popup-overlay" onClick={() => setShowSuccessPopup(false)}>
-          <div className="upload-popup" onClick={(e) => e.stopPropagation()}>
-            <h3>Note uploaded successfully</h3>
-            <p>Your note is now available in Browse and Profile.</p>
-            <button
-              type="button"
-              className="upload-popup-button"
-              onClick={() => setShowSuccessPopup(false)}
-            >
+      {popupMessage && (
+        <div className="upload-popup-overlay" onClick={() => setPopupMessage('')}>
+          <div className="upload-popup" onClick={(event) => event.stopPropagation()}>
+            <h3>{editingNote ? 'Note updated' : 'Submission received'}</h3>
+            <p>{popupMessage}</p>
+            <button type="button" className="upload-popup-button" onClick={() => setPopupMessage('')}>
               OK
             </button>
           </div>

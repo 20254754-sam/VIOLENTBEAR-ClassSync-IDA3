@@ -1,33 +1,111 @@
-import React from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useMemo, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 
-const NoteDetailsPage = ({ notes }) => {
+const formatDate = (dateValue) =>
+  new Date(dateValue).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  });
+
+const NoteDetailsPage = ({ notes, currentUser, onToggleLike, onDelete, onEdit, onSubmitReview }) => {
   const { id } = useParams();
-  const note = notes.find((n) => n.id === parseInt(id, 10));
+  const navigate = useNavigate();
+  const note = notes.find((item) => item.id === Number(id));
+  const [reviewForm, setReviewForm] = useState({ rating: '5', text: '' });
+
   const hasSource = note?.isOwnWork === false && note?.source;
+  const isUploader = note && currentUser && note.uploaderId === currentUser.id;
+  const liked = note && currentUser ? note.likes.includes(currentUser.id) : false;
+
+  const averageRating = useMemo(() => {
+    if (!note || note.reviews.length === 0) {
+      return null;
+    }
+
+    const total = note.reviews.reduce((sum, review) => sum + Number(review.rating), 0);
+    return (total / note.reviews.length).toFixed(1);
+  }, [note]);
 
   if (!note) {
     return (
       <div className="page">
         <h1>Note Not Found</h1>
-        <Link to="/browse" className="back-btn">Back to Browse</Link>
+        <Link to="/browse" className="inline-link">Back to Browse</Link>
       </div>
     );
   }
+
+  const handleReviewSubmit = (event) => {
+    event.preventDefault();
+
+    if (!reviewForm.text.trim()) {
+      return;
+    }
+
+    onSubmitReview(note.id, {
+      rating: Number(reviewForm.rating),
+      text: reviewForm.text.trim()
+    });
+
+    setReviewForm({ rating: '5', text: '' });
+  };
 
   return (
     <div className="page">
       <div className="note-header">
         <Link to="/browse" className="back-btn-small">Back</Link>
         <div className="note-title-info">
+          <div className="note-badge-row">
+            <span className={`ownership-badge ${hasSource ? 'ownership-badge-referenced' : 'ownership-badge-original'}`}>
+              {hasSource ? 'Referenced material' : 'Original work'}
+            </span>
+            <span className={`status-pill status-${note.status}`}>{note.status}</span>
+          </div>
           <h1>{note.title}</h1>
           <div className="note-info">
             <span className="subject">{note.subject}</span>
             <span className="author-date">
-              {note.author} • {note.date}
+              Uploaded by {note.uploaderName} on {formatDate(note.updatedAt || note.createdAt)}
             </span>
           </div>
         </div>
+      </div>
+
+      <div className="detail-toolbar">
+        <button
+          type="button"
+          className={`card-action-button ${liked ? 'card-action-button-active' : ''}`}
+          onClick={() => onToggleLike(note.id)}
+        >
+          {liked ? 'Unlike' : 'Like'} {note.likes.length}
+        </button>
+        {isUploader && (
+          <button
+            type="button"
+            className="card-link-button"
+            onClick={() => {
+              onEdit(note.id);
+              navigate('/upload');
+            }}
+          >
+            Edit note
+          </button>
+        )}
+        {(isUploader || currentUser.role === 'admin') && (
+          <button
+            type="button"
+            className="card-link-button card-link-button-danger"
+            onClick={() => {
+              if (window.confirm('Delete this note permanently?')) {
+                onDelete(note.id);
+                navigate('/profile');
+              }
+            }}
+          >
+            Delete note
+          </button>
+        )}
       </div>
 
       {hasSource && (
@@ -71,6 +149,55 @@ const NoteDetailsPage = ({ notes }) => {
           <p>{note.content}</p>
         </div>
       </div>
+
+      <section className="review-section">
+        <div className="review-summary">
+          <div>
+            <h2>Reviews</h2>
+            <p className="review-summary-text">{note.reviews.length} review(s)</p>
+          </div>
+          {averageRating && <div className="review-rating-chip">Average {averageRating} / 5</div>}
+        </div>
+
+        <form className="review-form" onSubmit={handleReviewSubmit}>
+          <div className="review-form-row">
+            <select
+              value={reviewForm.rating}
+              onChange={(event) => setReviewForm((currentForm) => ({ ...currentForm, rating: event.target.value }))}
+            >
+              <option value="5">5 stars</option>
+              <option value="4">4 stars</option>
+              <option value="3">3 stars</option>
+              <option value="2">2 stars</option>
+              <option value="1">1 star</option>
+            </select>
+            <textarea
+              value={reviewForm.text}
+              onChange={(event) => setReviewForm((currentForm) => ({ ...currentForm, text: event.target.value }))}
+              placeholder="Share a quick review about this note"
+              rows="4"
+            />
+          </div>
+          <button type="submit">Submit review</button>
+        </form>
+
+        <div className="review-list">
+          {note.reviews.length > 0 ? (
+            note.reviews.map((review) => (
+              <article key={review.id} className="review-card">
+                <div className="review-card-header">
+                  <strong>{review.userName}</strong>
+                  <span>{review.rating} / 5</span>
+                </div>
+                <p>{review.text}</p>
+                <small>{formatDate(review.createdAt)}</small>
+              </article>
+            ))
+          ) : (
+            <p>No reviews yet. Be the first to rate this note.</p>
+          )}
+        </div>
+      </section>
     </div>
   );
 };
