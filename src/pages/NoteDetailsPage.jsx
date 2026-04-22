@@ -97,12 +97,11 @@ const NoteDetailsPage = ({ notes, currentUser, onToggleLike, onDelete, onEdit, o
           <button
             type="button"
             className="card-link-button card-link-button-danger"
-            onClick={() => {
-              if (window.confirm('Delete this note permanently?')) {
-                onDelete(note.id);
-                navigate('/profile');
-              }
-            }}
+            onClick={() =>
+              onDelete(note.id, {
+                onSuccess: () => navigate(currentUser.role === 'admin' ? '/admin' : '/profile')
+              })
+            }
           >
             Delete note
           </button>
@@ -137,7 +136,8 @@ const NoteDetailsPage = ({ notes, currentUser, onToggleLike, onDelete, onEdit, o
               <div className="citation-item citation-item-full">
                 <span className="citation-label">Source Link</span>
                 <a href={note.source.link} target="_blank" rel="noreferrer" className="citation-link">
-                  Open source reference
+                  <span>Open reference</span>
+                  <span className="citation-link-icon" aria-hidden="true">↗</span>
                 </a>
               </div>
             )}
@@ -150,6 +150,28 @@ const NoteDetailsPage = ({ notes, currentUser, onToggleLike, onDelete, onEdit, o
           <p>{note.content}</p>
         </div>
       </div>
+
+      {note.attachments?.length > 0 && (
+        <section className="citation-panel">
+          <h2>Attached Files</h2>
+          <div className="attachment-view-list">
+            {note.attachments.map((attachment) => (
+              <article key={attachment.id} className="attachment-card">
+                <div className="attachment-card-copy">
+                  <strong>{attachment.name}</strong>
+                  <small>{attachment.isImage ? 'Image attachment' : 'File attachment'}</small>
+                </div>
+                {attachment.isImage && (
+                  <img src={attachment.url} alt={attachment.name} className="attachment-image-preview" />
+                )}
+                <a href={attachment.url} target="_blank" rel="noreferrer" className="attachment-view-button">
+                  {attachment.isImage ? 'View image' : 'Open file'}
+                </a>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="review-section">
         <div className="review-summary">

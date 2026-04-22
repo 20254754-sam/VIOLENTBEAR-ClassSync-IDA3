@@ -23,6 +23,7 @@ const emptyForm = {
   useCustomSubject: false,
   content: '',
   isOwnWork: '',
+  attachments: [],
   sourceType: '',
   sourceTitle: '',
   sourceAuthor: '',
@@ -30,11 +31,28 @@ const emptyForm = {
   sourceYear: ''
 };
 
+const readFileAsDataUrl = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () =>
+      resolve({
+        id: `${file.name}-${file.lastModified}-${file.size}`,
+        name: file.name,
+        type: file.type || 'application/octet-stream',
+        size: file.size,
+        url: reader.result,
+        isImage: file.type.startsWith('image/')
+      });
+    reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+    reader.readAsDataURL(file);
+  });
+
 const UploadForm = ({ onSubmit, editingNote, onCancelEdit }) => {
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState({});
   const [submitted, setSubmitted] = useState(false);
   const [popupMessage, setPopupMessage] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (editingNote) {
@@ -45,6 +63,7 @@ const UploadForm = ({ onSubmit, editingNote, onCancelEdit }) => {
         useCustomSubject: !SUBJECTS.includes(editingNote.subject),
         content: editingNote.content,
         isOwnWork: editingNote.isOwnWork ? 'yes' : 'no',
+        attachments: editingNote.attachments || [],
         sourceType: editingNote.source?.type || '',
         sourceTitle: editingNote.source?.title || '',
         sourceAuthor: editingNote.source?.author || '',
@@ -117,7 +136,38 @@ const UploadForm = ({ onSubmit, editingNote, onCancelEdit }) => {
     }));
   };
 
-  const handleSubmit = (event) => {
+  const handleAttachmentChange = async (event) => {
+    const selectedFiles = Array.from(event.target.files || []);
+
+    if (!selectedFiles.length) {
+      return;
+    }
+
+    try {
+      const nextAttachments = await Promise.all(selectedFiles.map(readFileAsDataUrl));
+      setErrors((currentErrors) => ({ ...currentErrors, attachments: null }));
+      setForm((currentForm) => ({
+        ...currentForm,
+        attachments: [...currentForm.attachments, ...nextAttachments]
+      }));
+    } catch {
+      setErrors((currentErrors) => ({
+        ...currentErrors,
+        attachments: 'One or more files could not be attached. Please try again.'
+      }));
+    }
+
+    event.target.value = '';
+  };
+
+  const handleRemoveAttachment = (attachmentId) => {
+    setForm((currentForm) => ({
+      ...currentForm,
+      attachments: currentForm.attachments.filter((attachment) => attachment.id !== attachmentId)
+    }));
+  };
+
+  const handleSubmit = async (event) => {
     event.preventDefault();
     setSubmitted(true);
 
@@ -128,11 +178,14 @@ const UploadForm = ({ onSubmit, editingNote, onCancelEdit }) => {
       return;
     }
 
+    setIsSaving(true);
+
     const result = onSubmit({
       title: form.title.trim(),
       subject: finalSubject,
       content: form.content.trim(),
       isOwnWork: form.isOwnWork === 'yes',
+      attachments: form.attachments,
       source:
         form.isOwnWork === 'no'
           ? {
@@ -144,6 +197,8 @@ const UploadForm = ({ onSubmit, editingNote, onCancelEdit }) => {
             }
           : null
     });
+
+    setIsSaving(false);
 
     if (!result.success) {
       return;
@@ -218,8 +273,8 @@ const UploadForm = ({ onSubmit, editingNote, onCancelEdit }) => {
 
         <div className="form-group">
           <label>Is this your own work?</label>
-          <div className={`radio-group ${submitted && errors.isOwnWork ? 'radio-group-error' : ''}`}>
-            <label className="radio-option">
+          <div className={`work-choice-group ${submitted && errors.isOwnWork ? 'radio-group-error' : ''}`}>
+            <label className={`work-choice-card ${form.isOwnWork === 'yes' ? 'work-choice-card-selected' : ''}`}>
               <input
                 type="radio"
                 name="isOwnWork"
@@ -227,9 +282,16 @@ const UploadForm = ({ onSubmit, editingNote, onCancelEdit }) => {
                 checked={form.isOwnWork === 'yes'}
                 onChange={handleChange}
               />
-              <span>Yes</span>
+              <span className="work-choice-indicator" aria-hidden="true">
+                <span className="work-choice-indicator-dot" />
+              </span>
+              <span className="work-choice-copy">
+                <strong>Yes, this is mine</strong>
+                <small>I wrote this note myself and I am submitting it as original work.</small>
+              </span>
             </label>
-            <label className="radio-option">
+
+            <label className={`work-choice-card ${form.isOwnWork === 'no' ? 'work-choice-card-selected' : ''}`}>
               <input
                 type="radio"
                 name="isOwnWork"
@@ -237,10 +299,55 @@ const UploadForm = ({ onSubmit, editingNote, onCancelEdit }) => {
                 checked={form.isOwnWork === 'no'}
                 onChange={handleChange}
               />
-              <span>No</span>
+              <span className="work-choice-indicator" aria-hidden="true">
+                <span className="work-choice-indicator-dot" />
+              </span>
+              <span className="work-choice-copy">
+                <strong>No, I used a source</strong>
+                <small>I adapted this from a book, website, lecture, or another reference.</small>
+              </span>
             </label>
           </div>
           {submitted && errors.isOwnWork && <p className="field-error-text">{errors.isOwnWork}</p>}
+        </div>
+
+        <div className="form-group">
+          <label htmlFor="attachments">Attachments</label>
+          <label htmlFor="attachments" className="attachment-picker">
+            <span className="attachment-picker-title">Attach image or file</span>
+            <small className="attachment-picker-help">
+              Approved attachments can be opened from the note page by students and admins.
+            </small>
+          </label>
+          <input
+            id="attachments"
+            type="file"
+            className="attachment-input"
+            accept="image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt"
+            multiple
+            onChange={handleAttachmentChange}
+          />
+          {errors.attachments && <p className="field-error-text">{errors.attachments}</p>}
+
+          {form.attachments.length > 0 && (
+            <div className="attachment-list">
+              {form.attachments.map((attachment) => (
+                <div key={attachment.id} className="attachment-chip">
+                  <div className="attachment-chip-copy">
+                    <strong>{attachment.name}</strong>
+                    <small>{attachment.isImage ? 'Image attachment' : 'File attachment'}</small>
+                  </div>
+                  <button
+                    type="button"
+                    className="attachment-remove-button"
+                    onClick={() => handleRemoveAttachment(attachment.id)}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {form.isOwnWork === 'no' && (
@@ -324,7 +431,9 @@ const UploadForm = ({ onSubmit, editingNote, onCancelEdit }) => {
               Cancel edit
             </button>
           )}
-          <button type="submit">{editingNote ? 'Update Note' : 'Share with Classmates'}</button>
+          <button type="submit" disabled={isSaving}>
+            {isSaving ? 'Saving...' : editingNote ? 'Update Note' : 'Share with Classmates'}
+          </button>
         </div>
       </form>
 

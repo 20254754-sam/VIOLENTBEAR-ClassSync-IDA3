@@ -97,9 +97,12 @@ const ProfilePage = ({ notes, currentUser, onToggleLike, onDelete, onEdit }) => 
       {rejectedNotes.length > 0 && (
         <div className="profile-rejection-list">
           {rejectedNotes.map((note) => (
-            <div key={`rejection-${note.id}`} className="profile-empty-state">
+            <div key={`rejection-${note.id}`} className="profile-empty-state profile-revision-card">
               <h3>{note.title}</h3>
               <p>{note.rejectionReason || 'The admin requested a few revisions before approval.'}</p>
+              <small>
+                Commented by {note.rejectionByName || 'Admin'}
+              </small>
             </div>
           ))}
         </div>

@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
+import AppModal from './components/AppModal';
+import Footer from './components/Footer';
 import Navbar from './components/Navbar';
 import HomePage from './pages/HomePage';
 import BrowsePage from './pages/BrowsePage';
@@ -102,6 +104,168 @@ const INITIAL_NOTES = [
     updatedAt: '2026-04-09T06:45:00.000Z',
     likes: ['student-1'],
     reviews: []
+  },
+  {
+    id: 4,
+    title: 'How To Upload Notes Properly',
+    subject: 'Study Guide',
+    content:
+      'Before uploading, prepare a clear title, choose the correct subject, and review your note for spelling or missing parts. If the note is your own work, select the original work option. If you used a book, website, lecture, or another source, choose the referenced option and complete the source details. Keep the content organized with headings, short paragraphs, and important points that classmates can scan quickly. After submission, student uploads will wait for admin review before they appear publicly.',
+    isOwnWork: true,
+    source: null,
+    uploaderId: 'admin-1',
+    uploaderName: 'ClassSync Admin',
+    status: 'approved',
+    rejectionReason: null,
+    rejectionByName: null,
+    createdAt: '2026-04-15T09:20:00.000Z',
+    updatedAt: '2026-04-15T09:20:00.000Z',
+    likes: [],
+    reviews: []
+  },
+  {
+    id: 5,
+    title: 'Java Abstract Classes And Interfaces',
+    subject: 'Java Programming',
+    content:
+      'An abstract class is a class that cannot be instantiated directly. It is used when related classes should share common fields, methods, or partial behavior. Abstract classes can have both abstract methods and concrete methods. An interface is used to define a contract that classes agree to follow. Interfaces are useful when different classes may behave similarly but do not share the same parent class. A class uses extends for an abstract class and implements for an interface. In practice, use an abstract class when you want shared base logic, and use an interface when you want flexibility and multiple behavior contracts. Example: an abstract class Vehicle may provide startEngine logic, while an interface Drivable can require a drive method.',
+    isOwnWork: false,
+    source: {
+      type: 'Website',
+      title: 'The Java Tutorials: Interfaces and Inheritance',
+      author: 'Oracle',
+      link: 'https://docs.oracle.com/javase/tutorial/java/IandI/',
+      year: '2024'
+    },
+    uploaderId: 'admin-1',
+    uploaderName: 'ClassSync Admin',
+    status: 'approved',
+    rejectionReason: null,
+    rejectionByName: null,
+    createdAt: '2026-04-16T10:10:00.000Z',
+    updatedAt: '2026-04-16T10:10:00.000Z',
+    likes: [],
+    reviews: []
+  },
+  {
+    id: 6,
+    title: 'React JS Quick Reviewer',
+    subject: 'Web Development',
+    content:
+      'React is a JavaScript library for building user interfaces using reusable components. Each component can manage its own state and receive data through props. React updates the UI efficiently through a virtual DOM, which helps keep applications responsive. Common concepts include JSX, components, props, state, conditional rendering, lists, events, and hooks like useState and useEffect. A good React project usually breaks the interface into small components, keeps state in the right place, and updates data in a predictable way.',
+    isOwnWork: false,
+    source: {
+      type: 'Website',
+      title: 'React Documentation',
+      author: 'React Team',
+      link: 'https://react.dev/learn',
+      year: '2026'
+    },
+    uploaderId: 'admin-1',
+    uploaderName: 'ClassSync Admin',
+    status: 'approved',
+    rejectionReason: null,
+    rejectionByName: null,
+    createdAt: '2026-04-17T11:30:00.000Z',
+    updatedAt: '2026-04-17T11:30:00.000Z',
+    likes: [],
+    reviews: []
+  },
+  {
+    id: 7,
+    title: 'C# Basics For First-Year Students',
+    subject: 'Programming Fundamentals',
+    content:
+      'C# is a modern programming language often used for desktop apps, web apps, and backend systems. A basic C# program starts with a Main method, where execution begins. Important beginner topics include variables, data types, input and output, operators, conditionals, loops, methods, arrays, and classes. Use int for whole numbers, double for decimal values, string for text, and bool for true or false values. Write clear method names, keep indentation consistent, and break larger problems into smaller methods to make your code easier to understand and debug.',
+    isOwnWork: false,
+    source: {
+      type: 'Website',
+      title: 'Get started with C#',
+      author: 'Microsoft Learn',
+      link: 'https://learn.microsoft.com/en-us/dotnet/csharp/tour-of-csharp/',
+      year: '2026'
+    },
+    uploaderId: 'admin-1',
+    uploaderName: 'ClassSync Admin',
+    status: 'approved',
+    rejectionReason: null,
+    rejectionByName: null,
+    createdAt: '2026-04-18T08:10:00.000Z',
+    updatedAt: '2026-04-18T08:10:00.000Z',
+    likes: [],
+    reviews: []
+  },
+  {
+    id: 8,
+    title: 'HTML Essentials For Beginners',
+    subject: 'Web Development',
+    content:
+      'HTML stands for HyperText Markup Language and is used to structure web pages. Common tags include headings, paragraphs, links, images, lists, tables, forms, and semantic elements like header, main, section, article, and footer. HTML does not style the page by itself. Instead, it defines the meaning and structure of the content so browsers and other tools can understand it correctly. A strong beginner habit is to use proper nesting, clear indentation, and semantic elements instead of using generic div tags for everything.',
+    isOwnWork: false,
+    source: {
+      type: 'Website',
+      title: 'HTML basics',
+      author: 'MDN Web Docs',
+      link: 'https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Structuring_content/Basic_HTML_syntax',
+      year: '2026'
+    },
+    uploaderId: 'admin-1',
+    uploaderName: 'ClassSync Admin',
+    status: 'approved',
+    rejectionReason: null,
+    rejectionByName: null,
+    createdAt: '2026-04-18T09:00:00.000Z',
+    updatedAt: '2026-04-18T09:00:00.000Z',
+    likes: [],
+    reviews: []
+  },
+  {
+    id: 9,
+    title: 'CSS Fundamentals For Layout And Design',
+    subject: 'Web Development',
+    content:
+      'CSS stands for Cascading Style Sheets and controls the look of a web page. It is used for colors, spacing, fonts, borders, sizing, positioning, and layout. Beginners should understand selectors, classes, ids, the box model, display, margin, padding, flexbox, and responsive design. The box model explains how content, padding, border, and margin affect element size and spacing. Flexbox is especially helpful for aligning items in rows or columns. Keep styles organized by grouping related rules and using reusable class names.',
+    isOwnWork: false,
+    source: {
+      type: 'Website',
+      title: 'CSS first steps',
+      author: 'MDN Web Docs',
+      link: 'https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Styling_basics',
+      year: '2026'
+    },
+    uploaderId: 'admin-1',
+    uploaderName: 'ClassSync Admin',
+    status: 'approved',
+    rejectionReason: null,
+    rejectionByName: null,
+    createdAt: '2026-04-18T09:35:00.000Z',
+    updatedAt: '2026-04-18T09:35:00.000Z',
+    likes: [],
+    reviews: []
+  },
+  {
+    id: 10,
+    title: 'JavaScript Basics For First-Year Coding',
+    subject: 'Web Development',
+    content:
+      'JavaScript adds behavior and interactivity to web pages. Important beginner topics include variables, data types, functions, arrays, objects, conditionals, loops, events, and DOM manipulation. Use let for values that can change and const for values that should stay the same. Functions help organize logic into reusable parts, while the DOM allows JavaScript to read and update HTML elements on the page. A good beginner workflow is to write small pieces of code, test often in the browser console, and read error messages carefully when something does not work.',
+    isOwnWork: false,
+    source: {
+      type: 'Website',
+      title: 'JavaScript basics',
+      author: 'MDN Web Docs',
+      link: 'https://developer.mozilla.org/en-US/docs/Learn_web_development/Core/Scripting',
+      year: '2026'
+    },
+    uploaderId: 'admin-1',
+    uploaderName: 'ClassSync Admin',
+    status: 'approved',
+    rejectionReason: null,
+    rejectionByName: null,
+    createdAt: '2026-04-18T10:05:00.000Z',
+    updatedAt: '2026-04-18T10:05:00.000Z',
+    likes: [],
+    reviews: []
   }
 ];
 
@@ -149,6 +313,14 @@ const readStorage = (key, fallback) => {
   }
 };
 
+const mergeSeedNotes = (storedNotes) => {
+  const existingNotes = Array.isArray(storedNotes) ? storedNotes : [];
+  const existingIds = new Set(existingNotes.map((note) => note.id));
+  const missingSeedNotes = INITIAL_NOTES.filter((note) => !existingIds.has(note.id));
+
+  return [...existingNotes, ...missingSeedNotes];
+};
+
 const sortNewest = (items) =>
   [...items].sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
 
@@ -168,13 +340,26 @@ const normalizeForumPosts = (posts) =>
 
 function App() {
   const [users, setUsers] = useState(() => readStorage(STORAGE_KEYS.users, DEMO_USERS));
-  const [notes, setNotes] = useState(() => readStorage(STORAGE_KEYS.notes, INITIAL_NOTES));
+  const [notes, setNotes] = useState(() => mergeSeedNotes(readStorage(STORAGE_KEYS.notes, INITIAL_NOTES)));
   const [forumPosts, setForumPosts] = useState(() =>
     normalizeForumPosts(readStorage(STORAGE_KEYS.forum, INITIAL_FORUM_POSTS))
   );
   const [currentUser, setCurrentUser] = useState(() => readStorage(STORAGE_KEYS.user, null));
   const [theme, setTheme] = useState(() => readStorage(STORAGE_KEYS.theme, 'light'));
   const [editingNoteId, setEditingNoteId] = useState(null);
+  const [modalState, setModalState] = useState({
+    isOpen: false,
+    variant: 'default',
+    title: '',
+    message: '',
+    confirmLabel: 'Confirm',
+    cancelLabel: 'Cancel',
+    requireComment: false,
+    commentLabel: 'Comment',
+    commentPlaceholder: '',
+    initialComment: '',
+    onConfirm: null
+  });
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEYS.notes, JSON.stringify(notes));
@@ -314,6 +499,30 @@ function App() {
     setEditingNoteId(null);
   };
 
+  const closeModal = () => {
+    setModalState((currentState) => ({
+      ...currentState,
+      isOpen: false,
+      onConfirm: null
+    }));
+  };
+
+  const openModal = (config) => {
+    setModalState({
+      isOpen: true,
+      variant: config.variant || 'default',
+      title: config.title,
+      message: config.message || '',
+      confirmLabel: config.confirmLabel || 'Confirm',
+      cancelLabel: config.cancelLabel || 'Cancel',
+      requireComment: config.requireComment || false,
+      commentLabel: config.commentLabel || 'Comment',
+      commentPlaceholder: config.commentPlaceholder || '',
+      initialComment: config.initialComment || '',
+      onConfirm: config.onConfirm || null
+    });
+  };
+
   const toggleTheme = () => {
     setTheme((currentTheme) => (currentTheme === 'light' ? 'dark' : 'light'));
   };
@@ -345,6 +554,9 @@ function App() {
                 ...note,
                 ...noteInput,
                 status: nextStatus,
+                attachments: noteInput.attachments || [],
+                rejectionReason: null,
+                rejectionByName: null,
                 updatedAt: now
               }
             : note
@@ -368,6 +580,9 @@ function App() {
       uploaderId: currentUser.id,
       uploaderName: currentUser.name,
       status: nextStatus,
+      attachments: noteInput.attachments || [],
+      rejectionReason: null,
+      rejectionByName: null,
       createdAt: now,
       updatedAt: now,
       likes: [],
@@ -390,6 +605,25 @@ function App() {
     if (editingNoteId === noteId) {
       setEditingNoteId(null);
     }
+  };
+
+  const requestDeleteNote = (noteId, options = {}) => {
+    const note = notes.find((item) => item.id === noteId);
+    if (!note) {
+      return;
+    }
+
+    openModal({
+      variant: 'danger',
+      title: 'Delete this note?',
+      message: `This will permanently remove "${note.title}" from ClassSync.`,
+      confirmLabel: 'Delete note',
+      onConfirm: () => {
+        handleDeleteNote(noteId);
+        closeModal();
+        options.onSuccess?.();
+      }
+    });
   };
 
   const handleToggleLike = (noteId) => {
@@ -452,16 +686,20 @@ function App() {
   const handleApproveNote = (noteId) => {
     setNotes((previousNotes) =>
       previousNotes.map((note) =>
-        note.id === noteId ? { ...note, status: 'approved', updatedAt: new Date().toISOString() } : note
+        note.id === noteId
+          ? {
+              ...note,
+              status: 'approved',
+              rejectionReason: null,
+              rejectionByName: null,
+              updatedAt: new Date().toISOString()
+            }
+          : note
       )
     );
   };
 
-  const handleRejectNote = (noteId) => {
-    const rejectionReason =
-      window.prompt('Add a short reason for rejection so the uploader knows what to improve:', 'Please revise formatting or source details.') ||
-      'Please revise this note and submit it again.';
-
+  const handleRejectNote = (noteId, rejectionReason) => {
     setNotes((previousNotes) =>
       previousNotes.map((note) =>
         note.id === noteId
@@ -469,11 +707,51 @@ function App() {
               ...note,
               status: 'rejected',
               rejectionReason,
+              rejectionByName: currentUser?.name || 'Admin',
               updatedAt: new Date().toISOString()
             }
           : note
       )
     );
+  };
+
+  const requestApproveNote = (noteId) => {
+    const note = notes.find((item) => item.id === noteId);
+    if (!note) {
+      return;
+    }
+
+    openModal({
+      title: 'Approve this submission?',
+      message: `"${note.title}" will become visible to all students once approved.`,
+      confirmLabel: 'Approve note',
+      onConfirm: () => {
+        handleApproveNote(noteId);
+        closeModal();
+      }
+    });
+  };
+
+  const requestRejectNote = (noteId) => {
+    const note = notes.find((item) => item.id === noteId);
+    if (!note) {
+      return;
+    }
+
+    openModal({
+      variant: 'danger',
+      title: 'Reject this submission?',
+      message: `Add a revision comment for "${note.title}" so the student knows what to fix.`,
+      confirmLabel: 'Reject with comment',
+      requireComment: true,
+      commentLabel: 'Rejection comment',
+      commentPlaceholder: 'Example: Please fix formatting, improve clarity, or add the complete source details.',
+      initialComment: note.rejectionReason || '',
+      onConfirm: (comment) => {
+        handleRejectNote(noteId, comment);
+        closeModal();
+      }
+    });
   };
 
   const handleCreateForumPost = (postInput) => {
@@ -635,7 +913,7 @@ function App() {
                 notes={publicNotes}
                 currentUser={currentUser}
                 onToggleLike={handleToggleLike}
-                onDelete={handleDeleteNote}
+                onDelete={requestDeleteNote}
                 onEdit={startEditingNote}
               />
             }
@@ -647,7 +925,7 @@ function App() {
                 notes={publicNotes}
                 currentUser={currentUser}
                 onToggleLike={handleToggleLike}
-                onDelete={handleDeleteNote}
+                onDelete={requestDeleteNote}
                 onEdit={startEditingNote}
               />
             }
@@ -671,7 +949,7 @@ function App() {
                 notes={visibleNotes}
                 currentUser={currentUser}
                 onToggleLike={handleToggleLike}
-                onDelete={handleDeleteNote}
+                onDelete={requestDeleteNote}
                 onEdit={startEditingNote}
                 onSubmitReview={handleSubmitReview}
               />
@@ -684,7 +962,7 @@ function App() {
                 notes={userNotes}
                 currentUser={currentUser}
                 onToggleLike={handleToggleLike}
-                onDelete={handleDeleteNote}
+                onDelete={requestDeleteNote}
                 onEdit={startEditingNote}
               />
             }
@@ -708,8 +986,9 @@ function App() {
                 <AdminPage
                   pendingNotes={pendingNotes}
                   allNotes={sortNewest(notes)}
-                  onApprove={handleApproveNote}
-                  onReject={handleRejectNote}
+                  onApprove={requestApproveNote}
+                  onReject={requestRejectNote}
+                  onDelete={requestDeleteNote}
                 />
               ) : (
                 <Navigate to="/" replace />
@@ -720,6 +999,21 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
+      <Footer />
+      <AppModal
+        isOpen={modalState.isOpen}
+        variant={modalState.variant}
+        title={modalState.title}
+        message={modalState.message}
+        confirmLabel={modalState.confirmLabel}
+        cancelLabel={modalState.cancelLabel}
+        requireComment={modalState.requireComment}
+        commentLabel={modalState.commentLabel}
+        commentPlaceholder={modalState.commentPlaceholder}
+        initialComment={modalState.initialComment}
+        onCancel={closeModal}
+        onConfirm={(comment) => modalState.onConfirm?.(comment)}
+      />
     </div>
   );
 }

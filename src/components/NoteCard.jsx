@@ -77,11 +77,7 @@ const NoteCard = ({ note, currentUser, onToggleLike, onDelete, onEdit, showStatu
               type="button"
               className="card-link-button card-link-button-danger"
               onClick={(event) =>
-                handleAction(event, () => {
-                  if (window.confirm('Delete this note permanently?')) {
-                    onDelete(note.id);
-                  }
-                })
+                handleAction(event, () => onDelete(note.id))
               }
             >
               Delete

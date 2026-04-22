@@ -7,7 +7,7 @@ const formatDate = (dateValue) =>
     year: 'numeric'
   });
 
-const AdminPage = ({ pendingNotes, allNotes, onApprove, onReject }) => {
+const AdminPage = ({ pendingNotes, allNotes, onApprove, onReject, onDelete }) => {
   const approvedCount = allNotes.filter((note) => note.status === 'approved').length;
   const rejectedCount = allNotes.filter((note) => note.status === 'rejected').length;
 
@@ -56,6 +56,25 @@ const AdminPage = ({ pendingNotes, allNotes, onApprove, onReject }) => {
                 </div>
               )}
 
+              {note.attachments?.length > 0 && (
+                <div className="attachment-panel">
+                  <strong>Attachments</strong>
+                  <div className="attachment-view-list">
+                    {note.attachments.map((attachment) => (
+                      <a
+                        key={attachment.id}
+                        href={attachment.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="attachment-view-button"
+                      >
+                        {attachment.isImage ? 'Open image' : 'Open file'}: {attachment.name}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="admin-review-tips">
                 <span>Admin checklist</span>
                 <p>Check clarity, completeness, and whether the reference details are filled in when needed.</p>
@@ -67,6 +86,9 @@ const AdminPage = ({ pendingNotes, allNotes, onApprove, onReject }) => {
                 </button>
                 <button type="button" className="card-link-button card-link-button-danger" onClick={() => onReject(note.id)}>
                   Reject
+                </button>
+                <button type="button" className="card-link-button card-link-button-danger" onClick={() => onDelete(note.id)}>
+                  Delete
                 </button>
               </div>
             </article>
