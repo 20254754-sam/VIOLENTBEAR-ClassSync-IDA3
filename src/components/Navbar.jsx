@@ -1,16 +1,42 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 const Navbar = ({ currentUser, onLogout, theme, onToggleTheme, pendingCount }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+  const toggleRef = useRef(null);
 
   useEffect(() => {
     document.body.classList.toggle('nav-scroll-locked', isMenuOpen);
+    document.body.classList.toggle('nav-menu-open', isMenuOpen);
     document.documentElement.classList.toggle('nav-scroll-locked', isMenuOpen);
 
     return () => {
       document.body.classList.remove('nav-scroll-locked');
+      document.body.classList.remove('nav-menu-open');
       document.documentElement.classList.remove('nav-scroll-locked');
+    };
+  }, [isMenuOpen]);
+
+  useEffect(() => {
+    if (!isMenuOpen) {
+      return undefined;
+    }
+
+    const handlePointerDown = (event) => {
+      const target = event.target;
+
+      if (menuRef.current?.contains(target) || toggleRef.current?.contains(target)) {
+        return;
+      }
+
+      setIsMenuOpen(false);
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
     };
   }, [isMenuOpen]);
 
@@ -25,6 +51,7 @@ const Navbar = ({ currentUser, onLogout, theme, onToggleTheme, pendingCount }) =
       </Link>
 
       <button
+        ref={toggleRef}
         type="button"
         className={`nav-toggle ${isMenuOpen ? 'nav-toggle-open' : ''}`}
         aria-label={isMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
@@ -41,7 +68,10 @@ const Navbar = ({ currentUser, onLogout, theme, onToggleTheme, pendingCount }) =
         onClick={handleLinkClick}
       />
 
-      <div className={`nav-desktop-group ${isMenuOpen ? 'nav-desktop-group-open' : ''}`}>
+      <div
+        ref={menuRef}
+        className={`nav-desktop-group ${isMenuOpen ? 'nav-desktop-group-open' : ''}`}
+      >
         <div className="nav-links">
           <Link to="/" onClick={handleLinkClick}>Home</Link>
           <Link to="/browse" onClick={handleLinkClick}>Browse</Link>

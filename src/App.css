@@ -62,6 +62,23 @@ body.nav-scroll-locked {
   overflow: hidden;
 }
 
+body.nav-menu-open .main,
+body.nav-menu-open .app-footer,
+body.nav-menu-open .nav-brand {
+  filter: blur(7px) saturate(0.92);
+  transition: filter 0.28s ease;
+  user-select: none;
+}
+
+body.nav-menu-open .main,
+body.nav-menu-open .app-footer {
+  pointer-events: none;
+}
+
+body.nav-menu-open .nav-brand {
+  opacity: 0.55;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -2118,8 +2135,10 @@ html[data-theme='dark'] .app-footer {
     position: fixed;
     inset: 0;
     display: block;
-    background: rgba(12, 17, 29, 0.22);
-    backdrop-filter: blur(10px);
+    background:
+      radial-gradient(circle at left center, rgba(91, 116, 214, 0.12), transparent 34%),
+      rgba(12, 17, 29, 0.3);
+    backdrop-filter: blur(14px) saturate(120%);
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.28s ease;
@@ -2139,7 +2158,7 @@ html[data-theme='dark'] .app-footer {
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    width: min(360px, 88vw);
+    width: min(320px, 78vw);
     margin-left: 0;
     padding: 5.4rem 1rem 1.35rem;
     flex-direction: column;
@@ -2384,9 +2403,8 @@ html[data-theme='dark'] .app-footer {
   }
 
   .nav-desktop-group {
-    width: 100%;
-    max-width: 100%;
-    border-left: none;
+    width: min(300px, 76vw);
+    max-width: 76vw;
   }
 
   .app-modal-actions button {
