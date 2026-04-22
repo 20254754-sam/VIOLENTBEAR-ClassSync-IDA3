@@ -8,6 +8,7 @@ const HomePage = ({ notes, currentUser, onToggleLike, onDelete, onEdit }) => {
   return (
     <div className="page">
       <section className="hero">
+        <h1>🕮</h1>
         <h1>Share and study together</h1>
         <p>
           Discover approved class notes, support helpful uploads, and collaborate with
