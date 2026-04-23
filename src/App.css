@@ -2127,7 +2127,7 @@ html[data-theme='dark'] .app-footer {
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 640px) {
   .navbar {
     align-items: center;
     justify-content: space-between;
