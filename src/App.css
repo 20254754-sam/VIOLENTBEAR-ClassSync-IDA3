@@ -2112,6 +2112,22 @@ html[data-theme='dark'] .app-footer {
     grid-template-columns: 1fr;
   }
 
+  .auth-card {
+    grid-template-columns: 1fr;
+  }
+
+  .forum-post {
+    grid-template-columns: 1fr;
+  }
+
+  .forum-vote-panel {
+    flex-direction: row;
+    justify-content: flex-start;
+    width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
   .navbar {
     align-items: center;
     justify-content: space-between;
@@ -2277,22 +2293,6 @@ html[data-theme='dark'] .app-footer {
     justify-content: center;
   }
 
-  .auth-card {
-    grid-template-columns: 1fr;
-  }
-
-  .forum-post {
-    grid-template-columns: 1fr;
-  }
-
-  .forum-vote-panel {
-    flex-direction: row;
-    justify-content: flex-start;
-    width: 100%;
-  }
-}
-
-@media (max-width: 768px) {
   .main {
     width: min(100%, calc(100% - 1rem));
     padding-top: 1.25rem;
