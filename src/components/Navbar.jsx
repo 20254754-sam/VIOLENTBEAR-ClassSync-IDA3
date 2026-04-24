@@ -75,6 +75,7 @@ const Navbar = ({ currentUser, onLogout, theme, onToggleTheme, pendingCount }) =
         <div className="nav-links">
           <Link to="/" onClick={handleLinkClick}>Home</Link>
           <Link to="/browse" onClick={handleLinkClick}>Browse</Link>
+          <Link to="/rooms" onClick={handleLinkClick}>Rooms</Link>
           <Link to="/upload" onClick={handleLinkClick}>Upload</Link>
           <Link to="/forum" onClick={handleLinkClick}>Forum</Link>
           <Link to="/profile" onClick={handleLinkClick}>Profile</Link>

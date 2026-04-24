@@ -6,6 +6,7 @@ const ProfilePage = ({ notes, currentUser, onToggleLike, onDelete, onEdit }) => 
   const approvedNotes = notes.filter((note) => note.status === 'approved');
   const pendingNotes = notes.filter((note) => note.status === 'pending');
   const rejectedNotes = notes.filter((note) => note.status === 'rejected');
+  const isAdmin = currentUser.role === 'admin';
 
   return (
     <div className="page">
@@ -32,10 +33,12 @@ const ProfilePage = ({ notes, currentUser, onToggleLike, onDelete, onEdit }) => 
           <h3>Waiting for review</h3>
           <p>{pendingNotes.length}</p>
         </div>
-        <div className="summary-card">
-          <h3>Needs revision</h3>
-          <p>{rejectedNotes.length}</p>
-        </div>
+        {!isAdmin && (
+          <div className="summary-card">
+            <h3>Needs revision</h3>
+            <p>{rejectedNotes.length}</p>
+          </div>
+        )}
       </div>
 
       <div className="upload-subtitle">
@@ -77,35 +80,39 @@ const ProfilePage = ({ notes, currentUser, onToggleLike, onDelete, onEdit }) => 
         </div>
       )}
 
-      <h2>Needs revision</h2>
-      {rejectedNotes.length > 0 ? (
-        <NoteList
-          notes={rejectedNotes}
-          currentUser={currentUser}
-          onToggleLike={onToggleLike}
-          onDelete={onDelete}
-          onEdit={onEdit}
-          showStatus
-        />
-      ) : (
-        <div className="profile-empty-state">
-          <h3>No revisions needed</h3>
-          <p>Your notes have not been sent back for revision. Keep it up.</p>
-        </div>
-      )}
-
-      {rejectedNotes.length > 0 && (
-        <div className="profile-rejection-list">
-          {rejectedNotes.map((note) => (
-            <div key={`rejection-${note.id}`} className="profile-empty-state profile-revision-card">
-              <h3>{note.title}</h3>
-              <p>{note.rejectionReason || 'The admin requested a few revisions before approval.'}</p>
-              <small>
-                Commented by {note.rejectionByName || 'Admin'}
-              </small>
+      {!isAdmin && (
+        <>
+          <h2>Needs revision</h2>
+          {rejectedNotes.length > 0 ? (
+            <NoteList
+              notes={rejectedNotes}
+              currentUser={currentUser}
+              onToggleLike={onToggleLike}
+              onDelete={onDelete}
+              onEdit={onEdit}
+              showStatus
+            />
+          ) : (
+            <div className="profile-empty-state">
+              <h3>No revisions needed</h3>
+              <p>Your notes have not been sent back for revision. Keep it up.</p>
             </div>
-          ))}
-        </div>
+          )}
+
+          {rejectedNotes.length > 0 && (
+            <div className="profile-rejection-list">
+              {rejectedNotes.map((note) => (
+                <div key={`rejection-${note.id}`} className="profile-empty-state profile-revision-card">
+                  <h3>{note.title}</h3>
+                  <p>{note.rejectionReason || 'The admin requested a few revisions before approval.'}</p>
+                  <small>
+                    Commented by {note.rejectionByName || 'Admin'}
+                  </small>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

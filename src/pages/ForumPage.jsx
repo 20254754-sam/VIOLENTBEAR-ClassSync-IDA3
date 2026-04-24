@@ -14,6 +14,7 @@ const ForumPage = ({ currentUser, posts, onCreatePost, onVote, onComment }) => {
     tag: 'Request'
   });
   const [commentDrafts, setCommentDrafts] = useState({});
+  const [openComments, setOpenComments] = useState({});
 
   const handleCreatePost = (event) => {
     event.preventDefault();
@@ -95,45 +96,69 @@ const ForumPage = ({ currentUser, posts, onCreatePost, onVote, onComment }) => {
                 </div>
                 <h3>{post.title}</h3>
                 <p>{post.body}</p>
-
-                <div className="forum-comment-list">
-                  {post.comments.map((comment) => (
-                    <div key={comment.id} className="forum-comment">
-                      <strong>{comment.userName}</strong>
-                      <p>{comment.text}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="forum-comment-form">
-                  <textarea
-                    rows="2"
-                    value={commentDrafts[post.id] || ''}
-                    placeholder={`Reply as ${currentUser.name}`}
-                    onChange={(event) =>
-                      setCommentDrafts((currentDrafts) => ({
-                        ...currentDrafts,
-                        [post.id]: event.target.value
-                      }))
-                    }
-                  />
+                <div className="forum-comment-toggle-row">
                   <button
                     type="button"
-                    onClick={() => {
-                      const text = (commentDrafts[post.id] || '').trim();
-                      if (!text) {
-                        return;
-                      }
-                      onComment(post.id, text);
-                      setCommentDrafts((currentDrafts) => ({
-                        ...currentDrafts,
-                        [post.id]: ''
-                      }));
-                    }}
+                    className="forum-comment-toggle"
+                    onClick={() =>
+                      setOpenComments((current) => ({
+                        ...current,
+                        [post.id]: !current[post.id]
+                      }))
+                    }
                   >
-                    Comment
+                    {openComments[post.id] ? 'Hide comments' : `Show comments (${post.comments.length})`}
                   </button>
                 </div>
+
+                {openComments[post.id] && (
+                  <>
+                    <div className="forum-comment-list">
+                      {post.comments.length > 0 ? (
+                        post.comments.map((comment) => (
+                          <div key={comment.id} className="forum-comment">
+                            <strong>{comment.userName}</strong>
+                            <p>{comment.text}</p>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="forum-comment forum-comment-empty">
+                          <p>No comments yet. Start the thread.</p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="forum-comment-form">
+                      <textarea
+                        rows="2"
+                        value={commentDrafts[post.id] || ''}
+                        placeholder={`Reply as ${currentUser.name}`}
+                        onChange={(event) =>
+                          setCommentDrafts((currentDrafts) => ({
+                            ...currentDrafts,
+                            [post.id]: event.target.value
+                          }))
+                        }
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const text = (commentDrafts[post.id] || '').trim();
+                          if (!text) {
+                            return;
+                          }
+                          onComment(post.id, text);
+                          setCommentDrafts((currentDrafts) => ({
+                            ...currentDrafts,
+                            [post.id]: ''
+                          }));
+                        }}
+                      >
+                        Comment
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </article>
           );

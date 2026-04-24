@@ -8,12 +8,13 @@ const formatDate = (dateValue) =>
     year: 'numeric'
   });
 
-const NoteCard = ({ note, currentUser, onToggleLike, onDelete, onEdit, showStatus }) => {
+const NoteCard = ({ note, currentUser, onToggleLike, onDelete, onEdit, showStatus, detailPath, editPath }) => {
   const navigate = useNavigate();
   const hasSource = note.isOwnWork === false && note.source;
   const isUploader = currentUser && note.uploaderId === currentUser.id;
   const canDelete = isUploader || currentUser?.role === 'admin';
   const likedByCurrentUser = currentUser ? note.likes.includes(currentUser.id) : false;
+  const nextDetailPath = detailPath || `/note/${note.id}`;
 
   const handleAction = (event, callback) => {
     event.stopPropagation();
@@ -23,11 +24,11 @@ const NoteCard = ({ note, currentUser, onToggleLike, onDelete, onEdit, showStatu
   return (
     <article
       className="note-card"
-      onClick={() => navigate(`/note/${note.id}`)}
+      onClick={() => navigate(nextDetailPath)}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          navigate(`/note/${note.id}`);
+          navigate(nextDetailPath);
         }
       }}
       role="button"
@@ -60,13 +61,13 @@ const NoteCard = ({ note, currentUser, onToggleLike, onDelete, onEdit, showStatu
         </div>
 
         <div className="note-owner-actions">
-          {isUploader && (
+          {isUploader && onEdit && (
             <button
               type="button"
               className="card-link-button"
               onClick={(event) => handleAction(event, () => {
                 onEdit(note.id);
-                navigate('/upload');
+                navigate(editPath || '/upload');
               })}
             >
               Edit

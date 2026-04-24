@@ -1,7 +1,16 @@
 import React from 'react';
 import NoteCard from './NoteCard';
 
-const NoteList = ({ notes, currentUser, onToggleLike, onDelete, onEdit, showStatus = false }) => {
+const NoteList = ({
+  notes,
+  currentUser,
+  onToggleLike,
+  onDelete,
+  onEdit,
+  showStatus = false,
+  detailPathBuilder,
+  editPathBuilder
+}) => {
   return (
     <div className="note-list">
       {notes.map((note) => (
@@ -13,6 +22,8 @@ const NoteList = ({ notes, currentUser, onToggleLike, onDelete, onEdit, showStat
             onDelete={onDelete}
             onEdit={onEdit}
             showStatus={showStatus}
+            detailPath={detailPathBuilder ? detailPathBuilder(note) : undefined}
+            editPath={editPathBuilder ? editPathBuilder(note) : undefined}
           />
         </div>
       ))}

@@ -12,11 +12,15 @@ import AboutPage from './pages/AboutPage';
 import LoginPage from './pages/LoginPage';
 import AdminPage from './pages/AdminPage';
 import ForumPage from './pages/ForumPage';
+import RoomsPage from './pages/RoomsPage';
+import RoomDetailsPage from './pages/RoomDetailsPage';
+import RoomNoteDetailsPage from './pages/RoomNoteDetailsPage';
 import './App.css';
 
 const STORAGE_KEYS = {
   notes: 'classsync-notes-v2',
   forum: 'classsync-forum-v2',
+  rooms: 'classsync-rooms-v1',
   user: 'classsync-user-v2',
   theme: 'classsync-theme-v2',
   users: 'classsync-users-v1'
@@ -304,6 +308,21 @@ const INITIAL_FORUM_POSTS = [
   }
 ];
 
+const INITIAL_ROOMS = [
+  {
+    id: 'room-web-dev',
+    code: 'DEV728',
+    name: 'Web Dev Review Circle',
+    subject: 'Web Development',
+    description: 'A simple study room for web development notes, reminders, and quick reviewer sharing.',
+    ownerId: 'admin-1',
+    ownerName: 'ClassSync Admin',
+    createdAt: '2026-04-20T08:45:00.000Z',
+    adminIds: ['admin-1'],
+    memberIds: ['admin-1', 'student-1']
+  }
+];
+
 const readStorage = (key, fallback) => {
   try {
     const stored = window.localStorage.getItem(key);
@@ -333,17 +352,49 @@ const normalizeForumPosts = (posts) =>
 
     return {
       ...post,
+      roomId: post.roomId || null,
       upvotes: uniqueUpvotes,
       downvotes: uniqueDownvotes
     };
   });
 
+const normalizeNotes = (notes) =>
+  (notes || []).map((note) => ({
+    ...note,
+    roomId: note.roomId || null,
+    visibility: note.visibility || (note.roomId ? 'room' : 'public'),
+    attachments: note.attachments || [],
+    likes: note.likes || [],
+    reviews: note.reviews || []
+  }));
+
+const normalizeRooms = (rooms) =>
+  (rooms || []).map((room) => ({
+    ...room,
+    adminIds: [...new Set(room.adminIds || [room.ownerId].filter(Boolean))],
+    memberIds: [...new Set(room.memberIds || [])]
+  }));
+
+const generateRoomCode = (existingRooms) => {
+  const existingCodes = new Set(existingRooms.map((room) => room.code));
+  let nextCode = '';
+
+  while (!nextCode || existingCodes.has(nextCode)) {
+    nextCode = Math.random().toString(36).slice(2, 8).toUpperCase();
+  }
+
+  return nextCode;
+};
+
 function App() {
   const [users, setUsers] = useState(() => readStorage(STORAGE_KEYS.users, DEMO_USERS));
-  const [notes, setNotes] = useState(() => mergeSeedNotes(readStorage(STORAGE_KEYS.notes, INITIAL_NOTES)));
+  const [notes, setNotes] = useState(() =>
+    normalizeNotes(mergeSeedNotes(readStorage(STORAGE_KEYS.notes, INITIAL_NOTES)))
+  );
   const [forumPosts, setForumPosts] = useState(() =>
     normalizeForumPosts(readStorage(STORAGE_KEYS.forum, INITIAL_FORUM_POSTS))
   );
+  const [rooms, setRooms] = useState(() => normalizeRooms(readStorage(STORAGE_KEYS.rooms, INITIAL_ROOMS)));
   const [currentUser, setCurrentUser] = useState(() => readStorage(STORAGE_KEYS.user, null));
   const [theme, setTheme] = useState(() => readStorage(STORAGE_KEYS.theme, 'light'));
   const [editingNoteId, setEditingNoteId] = useState(null);
@@ -374,6 +425,10 @@ function App() {
   }, [forumPosts]);
 
   useEffect(() => {
+    window.localStorage.setItem(STORAGE_KEYS.rooms, JSON.stringify(rooms));
+  }, [rooms]);
+
+  useEffect(() => {
     if (currentUser) {
       window.localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(currentUser));
     } else {
@@ -387,7 +442,7 @@ function App() {
   }, [theme]);
 
   const publicNotes = useMemo(
-    () => sortNewest(notes.filter((note) => note.status === 'approved')),
+    () => sortNewest(notes.filter((note) => note.status === 'approved' && !note.roomId)),
     [notes]
   );
 
@@ -417,6 +472,14 @@ function App() {
     () => sortNewest(notes.filter((note) => note.status === 'pending')),
     [notes]
   );
+
+  const joinedRooms = useMemo(() => {
+    if (!currentUser) {
+      return [];
+    }
+
+    return sortNewest(rooms.filter((room) => room.memberIds.includes(currentUser.id)));
+  }, [currentUser, rooms]);
 
   const editingNote = useMemo(
     () => notes.find((note) => note.id === editingNoteId) || null,
@@ -535,7 +598,7 @@ function App() {
     setEditingNoteId(null);
   };
 
-  const handleSaveNote = (noteInput) => {
+  const handleSaveNote = (noteInput, options = {}) => {
     if (!currentUser) {
       return {
         success: false,
@@ -544,7 +607,8 @@ function App() {
     }
 
     const now = new Date().toISOString();
-    const nextStatus = currentUser.role === 'admin' ? 'approved' : 'pending';
+    const nextStatus = options.roomId ? 'approved' : currentUser.role === 'admin' ? 'approved' : 'pending';
+    const nextVisibility = options.roomId ? 'room' : 'public';
 
     if (editingNoteId) {
       setNotes((previousNotes) =>
@@ -554,6 +618,8 @@ function App() {
                 ...note,
                 ...noteInput,
                 status: nextStatus,
+                roomId: options.roomId ?? note.roomId ?? null,
+                visibility: options.roomId ? 'room' : note.visibility || nextVisibility,
                 attachments: noteInput.attachments || [],
                 rejectionReason: null,
                 rejectionByName: null,
@@ -568,7 +634,9 @@ function App() {
       return {
         success: true,
         message:
-          currentUser.role === 'admin'
+          options.roomId
+            ? 'Room note updated successfully.'
+            : currentUser.role === 'admin'
             ? 'Note updated successfully.'
             : 'Note updated and sent back to admin for review.'
       };
@@ -580,6 +648,8 @@ function App() {
       uploaderId: currentUser.id,
       uploaderName: currentUser.name,
       status: nextStatus,
+      roomId: options.roomId || null,
+      visibility: nextVisibility,
       attachments: noteInput.attachments || [],
       rejectionReason: null,
       rejectionByName: null,
@@ -594,7 +664,9 @@ function App() {
     return {
       success: true,
       message:
-        currentUser.role === 'admin'
+        options.roomId
+          ? 'Room note shared successfully. Only room members can see it.'
+          : currentUser.role === 'admin'
           ? 'Note published successfully.'
           : 'Note submitted successfully. It is now waiting for admin approval.'
     };
@@ -754,7 +826,7 @@ function App() {
     });
   };
 
-  const handleCreateForumPost = (postInput) => {
+  const handleCreateForumPost = (postInput, options = {}) => {
     if (!currentUser) {
       return;
     }
@@ -767,6 +839,7 @@ function App() {
       authorId: currentUser.id,
       authorName: currentUser.name,
       createdAt: new Date().toISOString(),
+      roomId: options.roomId || null,
       upvotes: [],
       downvotes: [],
       comments: []
@@ -857,9 +930,126 @@ function App() {
     );
   };
 
+  const buildRoomLink = (room) => {
+    const basePath = `${window.location.origin}${window.location.pathname}`;
+    return `${basePath}#/rooms/${room.id}?invite=${room.code}`;
+  };
+
+  const handleCreateRoom = (roomInput) => {
+    if (!currentUser) {
+      return {
+        success: false,
+        message: 'Please log in before creating a room.'
+      };
+    }
+
+    const nextRoom = {
+      id: `room-${Date.now()}`,
+      code: generateRoomCode(rooms),
+      name: roomInput.name.trim(),
+      subject: roomInput.subject.trim(),
+      description: roomInput.description.trim(),
+      ownerId: currentUser.id,
+      ownerName: currentUser.name,
+      createdAt: new Date().toISOString(),
+      adminIds: [currentUser.id],
+      memberIds: [currentUser.id]
+    };
+
+    setRooms((previousRooms) => [nextRoom, ...previousRooms]);
+
+    return {
+      success: true,
+      room: nextRoom,
+      shareLink: buildRoomLink(nextRoom),
+      message: 'Room created successfully. Share the link or room code with classmates.'
+    };
+  };
+
+  const handleJoinRoom = ({ roomId, code }) => {
+    if (!currentUser) {
+      return {
+        success: false,
+        message: 'Please log in before joining a room.'
+      };
+    }
+
+    const normalizedCode = code?.trim().toUpperCase();
+    const matchedRoom = rooms.find((room) => {
+      if (roomId && room.id === roomId) {
+        return !normalizedCode || room.code === normalizedCode;
+      }
+
+      return normalizedCode ? room.code === normalizedCode : false;
+    });
+
+    if (!matchedRoom) {
+      return {
+        success: false,
+        message: 'We could not find a room with that invite code.'
+      };
+    }
+
+    if (matchedRoom.memberIds.includes(currentUser.id)) {
+      return {
+        success: true,
+        room: matchedRoom,
+        shareLink: buildRoomLink(matchedRoom),
+        message: `You are already in ${matchedRoom.name}.`
+      };
+    }
+
+    const updatedRoom = {
+      ...matchedRoom,
+      memberIds: [...matchedRoom.memberIds, currentUser.id]
+    };
+
+    setRooms((previousRooms) =>
+      previousRooms.map((room) => (room.id === matchedRoom.id ? updatedRoom : room))
+    );
+
+    return {
+      success: true,
+      room: updatedRoom,
+      shareLink: buildRoomLink(updatedRoom),
+      message: `You joined ${updatedRoom.name}.`
+    };
+  };
+
+  const handlePromoteRoomMember = (roomId, memberId) => {
+    setRooms((previousRooms) =>
+      previousRooms.map((room) =>
+        room.id === roomId
+          ? {
+              ...room,
+              adminIds: [...new Set([...(room.adminIds || []), memberId])]
+            }
+          : room
+      )
+    );
+  };
+
+  const handleKickRoomMember = (roomId, memberId) => {
+    setRooms((previousRooms) =>
+      previousRooms.map((room) => {
+        if (room.id !== roomId || memberId === room.ownerId) {
+          return room;
+        }
+
+        return {
+          ...room,
+          adminIds: (room.adminIds || []).filter((adminId) => adminId !== memberId),
+          memberIds: room.memberIds.filter((currentMemberId) => currentMemberId !== memberId)
+        };
+      })
+    );
+  };
+
   const sortedForumPosts = useMemo(
     () =>
-      normalizeForumPosts(forumPosts).sort((firstPost, secondPost) => {
+      normalizeForumPosts(forumPosts)
+      .filter((post) => !post.roomId)
+      .sort((firstPost, secondPost) => {
         const firstScore = firstPost.upvotes.length - firstPost.downvotes.length;
         const secondScore = secondPost.upvotes.length - secondPost.downvotes.length;
 
@@ -871,6 +1061,10 @@ function App() {
       }),
     [forumPosts]
   );
+
+  const handleSubmitRoomNote = (roomId, noteInput) => handleSaveNote(noteInput, { roomId });
+
+  const handleCreateRoomPost = (roomId, postInput) => handleCreateForumPost(postInput, { roomId });
 
   if (!currentUser) {
     return (
@@ -980,12 +1174,63 @@ function App() {
             }
           />
           <Route
+            path="/rooms"
+            element={
+              <RoomsPage
+                currentUser={currentUser}
+                rooms={joinedRooms}
+                onCreateRoom={handleCreateRoom}
+                onJoinRoom={handleJoinRoom}
+                getRoomLink={buildRoomLink}
+              />
+            }
+          />
+          <Route
+            path="/rooms/:roomId"
+            element={
+              <RoomDetailsPage
+                currentUser={currentUser}
+                users={users}
+                rooms={rooms}
+                roomNotes={sortNewest(notes.filter((note) => note.roomId))}
+                roomPosts={normalizeForumPosts(forumPosts).filter((post) => post.roomId)}
+                editingNote={editingNote}
+                onEdit={startEditingNote}
+                onCancelEdit={cancelEditingNote}
+                onSubmitRoomNote={handleSubmitRoomNote}
+                onCreateRoomPost={handleCreateRoomPost}
+                onVotePost={handleVoteForumPost}
+                onCommentPost={handleCommentOnPost}
+                onToggleLike={handleToggleLike}
+                onDeleteNote={requestDeleteNote}
+                onJoinRoom={handleJoinRoom}
+                onPromoteMember={handlePromoteRoomMember}
+                onKickMember={handleKickRoomMember}
+                getRoomLink={buildRoomLink}
+              />
+            }
+          />
+          <Route
+            path="/rooms/:roomId/note/:id"
+            element={
+              <RoomNoteDetailsPage
+                notes={notes.filter((note) => note.roomId)}
+                rooms={rooms}
+                currentUser={currentUser}
+                onToggleLike={handleToggleLike}
+                onDelete={requestDeleteNote}
+                onEdit={startEditingNote}
+                onSubmitReview={handleSubmitReview}
+              />
+            }
+          />
+          <Route
             path="/admin"
             element={
               currentUser.role === 'admin' ? (
                 <AdminPage
                   pendingNotes={pendingNotes}
-                  allNotes={sortNewest(notes)}
+                  allNotes={sortNewest(notes.filter((note) => !note.roomId))}
                   onApprove={requestApproveNote}
                   onReject={requestRejectNote}
                   onDelete={requestDeleteNote}
