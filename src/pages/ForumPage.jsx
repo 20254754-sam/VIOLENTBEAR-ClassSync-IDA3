@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ForumVoteControls from '../components/ForumVoteControls';
 
 const formatDate = (dateValue) =>
   new Date(dateValue).toLocaleDateString('en-US', {
@@ -70,99 +71,85 @@ const ForumPage = ({ currentUser, posts, onCreatePost, onVote, onComment }) => {
       </form>
 
       <div className="forum-list">
-        {posts.map((post) => {
-          const score = Math.max(0, post.upvotes.length - post.downvotes.length);
+        {posts.map((post) => (
+          <article key={post.id} className="forum-post">
+            <ForumVoteControls post={post} currentUser={currentUser} onVote={onVote} />
 
-          return (
-            <article key={post.id} className="forum-post">
-              <div className="forum-vote-panel">
-                <button type="button" className="forum-vote-button" onClick={() => onVote(post.id, 'up')}>
-                  <span className="forum-vote-arrow">▲</span>
-                  <span className="forum-vote-label">Up</span>
-                </button>
-                <strong>{score}</strong>
-                <button type="button" className="forum-vote-button" onClick={() => onVote(post.id, 'down')}>
-                  <span className="forum-vote-label">Down</span>
-                  <span className="forum-vote-arrow">▼</span>
+            <div className="forum-post-body">
+              <div className="forum-post-meta">
+                <span className="status-pill status-neutral">{post.tag}</span>
+                <small>
+                  {post.authorName} - {formatDate(post.createdAt)}
+                </small>
+              </div>
+              <h3>{post.title}</h3>
+              <p>{post.body}</p>
+              <div className="forum-comment-toggle-row">
+                <button
+                  type="button"
+                  className="forum-comment-toggle"
+                  onClick={() =>
+                    setOpenComments((current) => ({
+                      ...current,
+                      [post.id]: !current[post.id]
+                    }))
+                  }
+                >
+                  {openComments[post.id] ? 'Hide comments' : `Show comments (${post.comments.length})`}
                 </button>
               </div>
 
-              <div className="forum-post-body">
-                <div className="forum-post-meta">
-                  <span className="status-pill status-neutral">{post.tag}</span>
-                  <small>
-                    {post.authorName} - {formatDate(post.createdAt)}
-                  </small>
-                </div>
-                <h3>{post.title}</h3>
-                <p>{post.body}</p>
-                <div className="forum-comment-toggle-row">
-                  <button
-                    type="button"
-                    className="forum-comment-toggle"
-                    onClick={() =>
-                      setOpenComments((current) => ({
-                        ...current,
-                        [post.id]: !current[post.id]
-                      }))
-                    }
-                  >
-                    {openComments[post.id] ? 'Hide comments' : `Show comments (${post.comments.length})`}
-                  </button>
-                </div>
-
-                {openComments[post.id] && (
-                  <>
-                    <div className="forum-comment-list">
-                      {post.comments.length > 0 ? (
-                        post.comments.map((comment) => (
-                          <div key={comment.id} className="forum-comment">
-                            <strong>{comment.userName}</strong>
-                            <p>{comment.text}</p>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="forum-comment forum-comment-empty">
-                          <p>No comments yet. Start the thread.</p>
+              {openComments[post.id] && (
+                <>
+                  <div className="forum-comment-list">
+                    {post.comments.length > 0 ? (
+                      post.comments.map((comment) => (
+                        <div key={comment.id} className="forum-comment">
+                          <strong>{comment.userName}</strong>
+                          <p>{comment.text}</p>
                         </div>
-                      )}
-                    </div>
+                      ))
+                    ) : (
+                      <div className="forum-comment forum-comment-empty">
+                        <p>No comments yet. Start the thread.</p>
+                      </div>
+                    )}
+                  </div>
 
-                    <div className="forum-comment-form">
-                      <textarea
-                        rows="2"
-                        value={commentDrafts[post.id] || ''}
-                        placeholder={`Reply as ${currentUser.name}`}
-                        onChange={(event) =>
-                          setCommentDrafts((currentDrafts) => ({
-                            ...currentDrafts,
-                            [post.id]: event.target.value
-                          }))
+                  <div className="forum-comment-form">
+                    <textarea
+                      rows="2"
+                      value={commentDrafts[post.id] || ''}
+                      placeholder={`Reply as ${currentUser.name}`}
+                      onChange={(event) =>
+                        setCommentDrafts((currentDrafts) => ({
+                          ...currentDrafts,
+                          [post.id]: event.target.value
+                        }))
+                      }
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const text = (commentDrafts[post.id] || '').trim();
+                        if (!text) {
+                          return;
                         }
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const text = (commentDrafts[post.id] || '').trim();
-                          if (!text) {
-                            return;
-                          }
-                          onComment(post.id, text);
-                          setCommentDrafts((currentDrafts) => ({
-                            ...currentDrafts,
-                            [post.id]: ''
-                          }));
-                        }}
-                      >
-                        Comment
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </article>
-          );
-        })}
+                        onComment(post.id, text);
+                        setCommentDrafts((currentDrafts) => ({
+                          ...currentDrafts,
+                          [post.id]: ''
+                        }));
+                      }}
+                    >
+                      Comment
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </article>
+        ))}
       </div>
     </div>
   );

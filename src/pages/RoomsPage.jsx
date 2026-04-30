@@ -115,7 +115,7 @@ const RoomsPage = ({ currentUser, rooms, onCreateRoom, onJoinRoom, getRoomLink }
 
           <div className="rooms-tip-card">
             <strong>{currentUser.name}</strong>
-            <p>Your new rooms are saved in this browser, so this works as a frontend demo without a database.</p>
+            <p>Your rooms and invite links are shared through the published ClassSync database.</p>
           </div>
         </section>
       </div>

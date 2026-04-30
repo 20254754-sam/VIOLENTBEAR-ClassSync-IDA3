@@ -15,6 +15,7 @@ import ForumPage from './pages/ForumPage';
 import RoomsPage from './pages/RoomsPage';
 import RoomDetailsPage from './pages/RoomDetailsPage';
 import RoomNoteDetailsPage from './pages/RoomNoteDetailsPage';
+import { isCloudSyncEnabled, readManyDbValues, writeDbValue } from './lib/classsyncDb';
 import './App.css';
 
 const STORAGE_KEYS = {
@@ -26,11 +27,18 @@ const STORAGE_KEYS = {
   users: 'classsync-users-v1'
 };
 
+const DB_KEYS = {
+  notes: 'notes',
+  forum: 'forum',
+  rooms: 'rooms',
+  users: 'users'
+};
+
 const DEMO_USERS = [
   {
     id: 'student-1',
     name: 'Sample Student',
-    email: 'student@classsync.demo',
+    email: 'student@classsync.com',
     password: 'student123',
     role: 'student',
     bio: 'BSIT student who shares concise reviewers and practical study notes.'
@@ -38,7 +46,7 @@ const DEMO_USERS = [
   {
     id: 'admin-1',
     name: 'ClassSync Admin',
-    email: 'admin@classsync.demo',
+    email: 'admin@classsync.com',
     password: 'admin123',
     role: 'admin',
     bio: 'Reviews submitted notes before they become visible to the whole community.'
@@ -375,6 +383,20 @@ const normalizeRooms = (rooms) =>
     memberIds: [...new Set(room.memberIds || [])]
   }));
 
+const buildInitialUsers = (storedUsers) => {
+  const nextUsers = Array.isArray(storedUsers) && storedUsers.length > 0 ? storedUsers : DEMO_USERS;
+  return nextUsers;
+};
+
+const buildInitialNotes = (storedNotes) =>
+  normalizeNotes(mergeSeedNotes(Array.isArray(storedNotes) && storedNotes.length > 0 ? storedNotes : INITIAL_NOTES));
+
+const buildInitialForumPosts = (storedPosts) =>
+  normalizeForumPosts(Array.isArray(storedPosts) && storedPosts.length > 0 ? storedPosts : INITIAL_FORUM_POSTS);
+
+const buildInitialRooms = (storedRooms) =>
+  normalizeRooms(Array.isArray(storedRooms) && storedRooms.length > 0 ? storedRooms : INITIAL_ROOMS);
+
 const generateRoomCode = (existingRooms) => {
   const existingCodes = new Set(existingRooms.map((room) => room.code));
   let nextCode = '';
@@ -386,18 +408,29 @@ const generateRoomCode = (existingRooms) => {
   return nextCode;
 };
 
+const normalizeClassSyncEmail = (value) => {
+  const trimmedValue = value.trim().toLowerCase();
+
+  if (!trimmedValue) {
+    return '';
+  }
+
+  if (!trimmedValue.includes('@')) {
+    return `${trimmedValue}@classsync.com`;
+  }
+
+  return trimmedValue;
+};
+
 function App() {
-  const [users, setUsers] = useState(() => readStorage(STORAGE_KEYS.users, DEMO_USERS));
-  const [notes, setNotes] = useState(() =>
-    normalizeNotes(mergeSeedNotes(readStorage(STORAGE_KEYS.notes, INITIAL_NOTES)))
-  );
-  const [forumPosts, setForumPosts] = useState(() =>
-    normalizeForumPosts(readStorage(STORAGE_KEYS.forum, INITIAL_FORUM_POSTS))
-  );
-  const [rooms, setRooms] = useState(() => normalizeRooms(readStorage(STORAGE_KEYS.rooms, INITIAL_ROOMS)));
+  const [users, setUsers] = useState(DEMO_USERS);
+  const [notes, setNotes] = useState(() => normalizeNotes(INITIAL_NOTES));
+  const [forumPosts, setForumPosts] = useState(() => normalizeForumPosts(INITIAL_FORUM_POSTS));
+  const [rooms, setRooms] = useState(() => normalizeRooms(INITIAL_ROOMS));
   const [currentUser, setCurrentUser] = useState(() => readStorage(STORAGE_KEYS.user, null));
   const [theme, setTheme] = useState(() => readStorage(STORAGE_KEYS.theme, 'light'));
   const [editingNoteId, setEditingNoteId] = useState(null);
+  const [isHydrating, setIsHydrating] = useState(true);
   const [modalState, setModalState] = useState({
     isOpen: false,
     variant: 'default',
@@ -413,20 +446,100 @@ function App() {
   });
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEYS.notes, JSON.stringify(notes));
-  }, [notes]);
+    let isActive = true;
+
+    const hydrateDatabase = async () => {
+      const localUsers = readStorage(STORAGE_KEYS.users, DEMO_USERS);
+      const localNotes = readStorage(STORAGE_KEYS.notes, INITIAL_NOTES);
+      const localForum = readStorage(STORAGE_KEYS.forum, INITIAL_FORUM_POSTS);
+      const localRooms = readStorage(STORAGE_KEYS.rooms, INITIAL_ROOMS);
+
+      const storedData = await readManyDbValues([
+        { key: DB_KEYS.users, fallback: localUsers },
+        { key: DB_KEYS.notes, fallback: localNotes },
+        { key: DB_KEYS.forum, fallback: localForum },
+        { key: DB_KEYS.rooms, fallback: localRooms }
+      ]);
+
+      const nextUsers = buildInitialUsers(storedData[DB_KEYS.users]);
+      const nextNotes = buildInitialNotes(storedData[DB_KEYS.notes]);
+      const nextForumPosts = buildInitialForumPosts(storedData[DB_KEYS.forum]);
+      const nextRooms = buildInitialRooms(storedData[DB_KEYS.rooms]);
+
+      await Promise.all([
+        writeDbValue(DB_KEYS.users, nextUsers),
+        writeDbValue(DB_KEYS.notes, nextNotes),
+        writeDbValue(DB_KEYS.forum, nextForumPosts),
+        writeDbValue(DB_KEYS.rooms, nextRooms)
+      ]);
+
+      if (!isActive) {
+        return;
+      }
+
+      setUsers(nextUsers);
+      setNotes(nextNotes);
+      setForumPosts(nextForumPosts);
+      setRooms(nextRooms);
+      setIsHydrating(false);
+    };
+
+    hydrateDatabase().catch(() => {
+      if (!isActive) {
+        return;
+      }
+
+      setUsers(buildInitialUsers(readStorage(STORAGE_KEYS.users, DEMO_USERS)));
+      setNotes(buildInitialNotes(readStorage(STORAGE_KEYS.notes, INITIAL_NOTES)));
+      setForumPosts(buildInitialForumPosts(readStorage(STORAGE_KEYS.forum, INITIAL_FORUM_POSTS)));
+      setRooms(buildInitialRooms(readStorage(STORAGE_KEYS.rooms, INITIAL_ROOMS)));
+      setIsHydrating(false);
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(users));
-  }, [users]);
+    if (isHydrating) {
+      return;
+    }
+
+    writeDbValue(DB_KEYS.notes, notes).catch(() => {
+      window.localStorage.setItem(STORAGE_KEYS.notes, JSON.stringify(notes));
+    });
+  }, [isHydrating, notes]);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEYS.forum, JSON.stringify(forumPosts));
-  }, [forumPosts]);
+    if (isHydrating) {
+      return;
+    }
+
+    writeDbValue(DB_KEYS.users, users).catch(() => {
+      window.localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(users));
+    });
+  }, [isHydrating, users]);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEYS.rooms, JSON.stringify(rooms));
-  }, [rooms]);
+    if (isHydrating) {
+      return;
+    }
+
+    writeDbValue(DB_KEYS.forum, forumPosts).catch(() => {
+      window.localStorage.setItem(STORAGE_KEYS.forum, JSON.stringify(forumPosts));
+    });
+  }, [isHydrating, forumPosts]);
+
+  useEffect(() => {
+    if (isHydrating) {
+      return;
+    }
+
+    writeDbValue(DB_KEYS.rooms, rooms).catch(() => {
+      window.localStorage.setItem(STORAGE_KEYS.rooms, JSON.stringify(rooms));
+    });
+  }, [isHydrating, rooms]);
 
   useEffect(() => {
     if (currentUser) {
@@ -487,14 +600,15 @@ function App() {
   );
 
   const handleLogin = ({ email, password }) => {
+    const normalizedEmail = normalizeClassSyncEmail(email);
     const matchedUser = users.find(
-      (user) => user.email.toLowerCase() === email.toLowerCase() && user.password === password
+      (user) => user.email.toLowerCase() === normalizedEmail && user.password === password
     );
 
     if (!matchedUser) {
       return {
         success: false,
-        message: 'Invalid email or password. Use one of the demo accounts shown below.'
+        message: 'Invalid email or password. Check the account details and try again.'
       };
     }
 
@@ -514,12 +628,19 @@ function App() {
   };
 
   const handleRegister = ({ name, email, password }) => {
-    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedEmail = normalizeClassSyncEmail(email);
 
     if (!name.trim() || !normalizedEmail || !password.trim()) {
       return {
         success: false,
         message: 'Please complete your name, email, and password.'
+      };
+    }
+
+    if (!normalizedEmail.endsWith('@classsync.com')) {
+      return {
+        success: false,
+        message: 'Please use a ClassSync email that ends with @classsync.com.'
       };
     }
 
@@ -893,11 +1014,6 @@ function App() {
           };
         }
 
-        const currentScore = post.upvotes.length - post.downvotes.length;
-        if (currentScore <= 0 && !hasUpvoted) {
-          return post;
-        }
-
         upvoteSet.delete(currentUser.id);
         downvoteSet.add(currentUser.id);
 
@@ -1065,6 +1181,22 @@ function App() {
   const handleSubmitRoomNote = (roomId, noteInput) => handleSaveNote(noteInput, { roomId });
 
   const handleCreateRoomPost = (roomId, postInput) => handleCreateForumPost(postInput, { roomId });
+
+  if (isHydrating) {
+    return (
+      <div className="app app-loading-shell">
+        <div className="app-loading-card">
+          <p className="auth-eyebrow">ClassSync</p>
+          <h1>Loading your study space</h1>
+          <p>
+            {isCloudSyncEnabled
+              ? 'Preparing notes, rooms, forum posts, and shared accounts from the Supabase database.'
+              : 'Preparing notes, rooms, forum posts, and saved accounts from the local database.'}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentUser) {
     return (

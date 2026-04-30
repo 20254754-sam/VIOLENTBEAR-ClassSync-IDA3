@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
+import ForumVoteControls from '../components/ForumVoteControls';
 import NoteList from '../components/NoteList';
 import UploadForm from '../components/UploadForm';
 
@@ -76,25 +77,20 @@ const RoomDetailsPage = ({
     [roomId, roomPosts]
   );
 
+  const roomEditingNote = editingNote?.roomId === roomId ? editingNote : null;
+  const isMember = room?.memberIds.includes(currentUser.id);
+  const isRoomAdmin = room?.adminIds?.includes(currentUser.id) || room?.ownerId === currentUser.id;
+  const isComposerVisible = showComposer || Boolean(roomEditingNote);
+
   if (!room) {
     return (
       <div className="page">
         <h1>Room not found</h1>
-        <p>The invite link may be invalid or the room was removed from this browser demo.</p>
+        <p>The invite link may be invalid or the room may have been removed from ClassSync.</p>
         <Link to="/rooms" className="inline-link">Back to rooms</Link>
       </div>
     );
   }
-
-  const isMember = room.memberIds.includes(currentUser.id);
-  const isRoomAdmin = room.adminIds?.includes(currentUser.id) || room.ownerId === currentUser.id;
-  const roomEditingNote = editingNote?.roomId === roomId ? editingNote : null;
-
-  useEffect(() => {
-    if (roomEditingNote) {
-      setShowComposer(true);
-    }
-  }, [roomEditingNote]);
 
   const copyValue = async (value, successMessage) => {
     try {
@@ -279,7 +275,7 @@ const RoomDetailsPage = ({
 
             <div className="room-card-actions room-toolbar">
               <button type="button" onClick={() => setShowComposer((current) => !current)}>
-                {showComposer ? 'Hide room uploader' : roomEditingNote ? 'Continue editing note' : 'Upload to room'}
+                {roomEditingNote ? 'Continue editing note' : isComposerVisible ? 'Hide room uploader' : 'Upload to room'}
               </button>
               {roomEditingNote && (
                 <button
@@ -295,7 +291,7 @@ const RoomDetailsPage = ({
               )}
             </div>
 
-            {showComposer && (
+            {isComposerVisible && (
               <div className="room-composer-card">
                 <UploadForm
                   editingNote={roomEditingNote}
@@ -359,75 +355,61 @@ const RoomDetailsPage = ({
 
             {roomScopedPosts.length > 0 ? (
               <div className="forum-list">
-                {roomScopedPosts.map((post) => {
-                  const score = Math.max(0, post.upvotes.length - post.downvotes.length);
+                {roomScopedPosts.map((post) => (
+                  <article key={post.id} className="forum-post">
+                    <ForumVoteControls post={post} currentUser={currentUser} onVote={onVotePost} />
 
-                  return (
-                    <article key={post.id} className="forum-post">
-                      <div className="forum-vote-panel">
-                        <button type="button" className="forum-vote-button" onClick={() => onVotePost(post.id, 'up')}>
-                          <span className="forum-vote-arrow">▲</span>
-                          <span className="forum-vote-label">Up</span>
-                        </button>
-                        <strong>{score}</strong>
-                        <button type="button" className="forum-vote-button" onClick={() => onVotePost(post.id, 'down')}>
-                          <span className="forum-vote-label">Down</span>
-                          <span className="forum-vote-arrow">▼</span>
-                        </button>
+                    <div className="forum-post-body">
+                      <div className="forum-post-meta">
+                        <span className="status-pill status-neutral">{post.tag}</span>
+                        <small>
+                          {post.authorName} - {formatDate(post.createdAt)}
+                        </small>
+                      </div>
+                      <h3>{post.title}</h3>
+                      <p>{post.body}</p>
+
+                      <div className="forum-comment-list">
+                        {post.comments.map((comment) => (
+                          <div key={comment.id} className="forum-comment">
+                            <strong>{comment.userName}</strong>
+                            <p>{comment.text}</p>
+                          </div>
+                        ))}
                       </div>
 
-                      <div className="forum-post-body">
-                        <div className="forum-post-meta">
-                          <span className="status-pill status-neutral">{post.tag}</span>
-                          <small>
-                            {post.authorName} - {formatDate(post.createdAt)}
-                          </small>
-                        </div>
-                        <h3>{post.title}</h3>
-                        <p>{post.body}</p>
-
-                        <div className="forum-comment-list">
-                          {post.comments.map((comment) => (
-                            <div key={comment.id} className="forum-comment">
-                              <strong>{comment.userName}</strong>
-                              <p>{comment.text}</p>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="forum-comment-form">
-                          <textarea
-                            rows="2"
-                            value={commentDrafts[post.id] || ''}
-                            placeholder={`Reply as ${currentUser.name}`}
-                            onChange={(event) =>
-                              setCommentDrafts((currentDrafts) => ({
-                                ...currentDrafts,
-                                [post.id]: event.target.value
-                              }))
+                      <div className="forum-comment-form">
+                        <textarea
+                          rows="2"
+                          value={commentDrafts[post.id] || ''}
+                          placeholder={`Reply as ${currentUser.name}`}
+                          onChange={(event) =>
+                            setCommentDrafts((currentDrafts) => ({
+                              ...currentDrafts,
+                              [post.id]: event.target.value
+                            }))
+                          }
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const text = (commentDrafts[post.id] || '').trim();
+                            if (!text) {
+                              return;
                             }
-                          />
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const text = (commentDrafts[post.id] || '').trim();
-                              if (!text) {
-                                return;
-                              }
-                              onCommentPost(post.id, text);
-                              setCommentDrafts((currentDrafts) => ({
-                                ...currentDrafts,
-                                [post.id]: ''
-                              }));
-                            }}
-                          >
-                            Comment
-                          </button>
-                        </div>
+                            onCommentPost(post.id, text);
+                            setCommentDrafts((currentDrafts) => ({
+                              ...currentDrafts,
+                              [post.id]: ''
+                            }));
+                          }}
+                        >
+                          Comment
+                        </button>
                       </div>
-                    </article>
-                  );
-                })}
+                    </div>
+                  </article>
+                ))}
               </div>
             ) : (
               <div className="profile-empty-state">

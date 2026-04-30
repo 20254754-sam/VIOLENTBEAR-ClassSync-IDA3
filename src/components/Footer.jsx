@@ -1,4 +1,5 @@
 import React from 'react';
+import BrandLogo from './BrandLogo';
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
@@ -14,7 +15,7 @@ const Footer = () => {
     <footer className="app-footer">
       <div className="app-footer-inner">
         <div className="app-footer-brand">
-          <strong>ClassSync</strong>
+          <BrandLogo size="sm" />
           <p>Share notes and study smarter.</p>
         </div>
         <button type="button" className="footer-top-button" onClick={handleBackToTop}>

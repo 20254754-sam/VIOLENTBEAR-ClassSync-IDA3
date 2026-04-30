@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import BrandLogo from './BrandLogo';
 
 const Navbar = ({ currentUser, onLogout, theme, onToggleTheme, pendingCount }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -47,7 +48,7 @@ const Navbar = ({ currentUser, onLogout, theme, onToggleTheme, pendingCount }) =
   return (
     <nav className="navbar">
       <Link to="/" className="nav-brand" onClick={handleLinkClick}>
-        ClassSync
+        <BrandLogo size="sm" />
       </Link>
 
       <button

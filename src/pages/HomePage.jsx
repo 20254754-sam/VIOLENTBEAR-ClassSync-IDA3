@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import BrandLogo from '../components/BrandLogo';
 import NoteList from '../components/NoteList';
 
 const HomePage = ({ notes, currentUser, onToggleLike, onDelete, onEdit }) => {
@@ -8,7 +9,9 @@ const HomePage = ({ notes, currentUser, onToggleLike, onDelete, onEdit }) => {
   return (
     <div className="page">
       <section className="hero">
-        <h1>🕮</h1>
+        <div className="hero-logo-wrap">
+          <BrandLogo size="hero" showWordmark={false} />
+        </div>
         <h1>Share and study together</h1>
         <p>
           Discover approved class notes, support helpful uploads, and collaborate with
