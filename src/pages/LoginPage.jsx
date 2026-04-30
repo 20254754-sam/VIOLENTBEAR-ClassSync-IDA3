@@ -323,11 +323,6 @@ const LoginPage = ({ onLogin, onRegister, theme, onToggleTheme }) => {
               <p>Email: student@classsync.com</p>
               <p>Password: student123</p>
             </div>
-            <div className="demo-credential-card">
-              <strong>Admin</strong>
-              <p>Email: admin@classsync.com</p>
-              <p>Password: admin123</p>
-            </div>
           </div>
         </div>
       </div>
