@@ -47,8 +47,8 @@ const EyeClosedIcon = () => (
 const LoginPage = ({ onLogin, onRegister, theme, onToggleTheme }) => {
   const [mode, setMode] = useState('login');
   const [credentials, setCredentials] = useState({
-    email: 'student@classsync.com',
-    password: 'student123'
+    email: '',
+    password: ''
   });
   const [registerForm, setRegisterForm] = useState({
     name: '',
@@ -220,6 +220,7 @@ const LoginPage = ({ onLogin, onRegister, theme, onToggleTheme }) => {
                   <input
                     id="login-email"
                     value={credentials.email}
+                    placeholder="name@classsync.com"
                     onChange={(event) => setCredentials((current) => ({ ...current, email: event.target.value }))}
                   />
                 </div>
@@ -232,6 +233,7 @@ const LoginPage = ({ onLogin, onRegister, theme, onToggleTheme }) => {
                       className={credentials.password ? 'password-input-has-toggle' : ''}
                       type={showLoginPassword ? 'text' : 'password'}
                       value={credentials.password}
+                      placeholder="Enter your password"
                       onChange={(event) => setCredentials((current) => ({ ...current, password: event.target.value }))}
                     />
                     {credentials.password && (
@@ -277,6 +279,7 @@ const LoginPage = ({ onLogin, onRegister, theme, onToggleTheme }) => {
                   <input
                     id="register-email"
                     value={registerForm.email}
+                    placeholder="name@classsync.com"
                     onChange={(event) => setRegisterForm((current) => ({ ...current, email: event.target.value }))}
                   />
                 </div>
@@ -289,6 +292,7 @@ const LoginPage = ({ onLogin, onRegister, theme, onToggleTheme }) => {
                       className={registerForm.password ? 'password-input-has-toggle' : ''}
                       type={showRegisterPassword ? 'text' : 'password'}
                       value={registerForm.password}
+                      placeholder="Create a password"
                       onChange={(event) => setRegisterForm((current) => ({ ...current, password: event.target.value }))}
                     />
                     {registerForm.password && (
