@@ -15,7 +15,7 @@ import ForumPage from './pages/ForumPage';
 import RoomsPage from './pages/RoomsPage';
 import RoomDetailsPage from './pages/RoomDetailsPage';
 import RoomNoteDetailsPage from './pages/RoomNoteDetailsPage';
-import { isCloudSyncEnabled, readManyDbValues, writeDbValue } from './lib/classsyncDb';
+import { isCloudSyncEnabled, readDbValue, readManyDbValues, writeDbValue } from './lib/classsyncDb';
 import './App.css';
 
 const STORAGE_KEYS = {
@@ -599,6 +599,13 @@ function App() {
     [editingNoteId, notes]
   );
 
+  const loadLatestRooms = async (fallbackRooms = rooms) => {
+    const latestRooms = await readDbValue(DB_KEYS.rooms, fallbackRooms);
+    const normalizedRooms = buildInitialRooms(latestRooms);
+    setRooms(normalizedRooms);
+    return normalizedRooms;
+  };
+
   const handleLogin = ({ email, password }) => {
     const normalizedEmail = normalizeClassSyncEmail(email);
     const matchedUser = users.find(
@@ -1051,7 +1058,7 @@ function App() {
     return `${basePath}#/rooms/${room.id}?invite=${room.code}`;
   };
 
-  const handleCreateRoom = (roomInput) => {
+  const handleCreateRoom = async (roomInput) => {
     if (!currentUser) {
       return {
         success: false,
@@ -1059,9 +1066,11 @@ function App() {
       };
     }
 
+    const latestRooms = await loadLatestRooms();
+
     const nextRoom = {
       id: `room-${Date.now()}`,
-      code: generateRoomCode(rooms),
+      code: generateRoomCode(latestRooms),
       name: roomInput.name.trim(),
       subject: roomInput.subject.trim(),
       description: roomInput.description.trim(),
@@ -1072,7 +1081,9 @@ function App() {
       memberIds: [currentUser.id]
     };
 
-    setRooms((previousRooms) => [nextRoom, ...previousRooms]);
+    const nextRooms = [nextRoom, ...latestRooms];
+    setRooms(nextRooms);
+    await writeDbValue(DB_KEYS.rooms, nextRooms);
 
     return {
       success: true,
@@ -1082,7 +1093,7 @@ function App() {
     };
   };
 
-  const handleJoinRoom = ({ roomId, code }) => {
+  const handleJoinRoom = async ({ roomId, code }) => {
     if (!currentUser) {
       return {
         success: false,
@@ -1090,8 +1101,9 @@ function App() {
       };
     }
 
+    const latestRooms = await loadLatestRooms();
     const normalizedCode = code?.trim().toUpperCase();
-    const matchedRoom = rooms.find((room) => {
+    const matchedRoom = latestRooms.find((room) => {
       if (roomId && room.id === roomId) {
         return !normalizedCode || room.code === normalizedCode;
       }
@@ -1120,9 +1132,9 @@ function App() {
       memberIds: [...matchedRoom.memberIds, currentUser.id]
     };
 
-    setRooms((previousRooms) =>
-      previousRooms.map((room) => (room.id === matchedRoom.id ? updatedRoom : room))
-    );
+    const nextRooms = latestRooms.map((room) => (room.id === matchedRoom.id ? updatedRoom : room));
+    setRooms(nextRooms);
+    await writeDbValue(DB_KEYS.rooms, nextRooms);
 
     return {
       success: true,

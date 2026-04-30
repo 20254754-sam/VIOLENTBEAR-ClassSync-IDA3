@@ -101,8 +101,8 @@ const RoomDetailsPage = ({
     }
   };
 
-  const handleJoinRoom = () => {
-    const result = onJoinRoom({
+  const handleJoinRoom = async () => {
+    const result = await onJoinRoom({
       roomId: room.id,
       code: inviteCode || room.code
     });

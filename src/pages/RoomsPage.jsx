@@ -11,7 +11,7 @@ const RoomsPage = ({ currentUser, rooms, onCreateRoom, onJoinRoom, getRoomLink }
   const [joinCode, setJoinCode] = useState('');
   const [feedback, setFeedback] = useState('');
 
-  const handleCreateSubmit = (event) => {
+  const handleCreateSubmit = async (event) => {
     event.preventDefault();
 
     if (!createForm.name.trim() || !createForm.subject.trim()) {
@@ -19,7 +19,7 @@ const RoomsPage = ({ currentUser, rooms, onCreateRoom, onJoinRoom, getRoomLink }
       return;
     }
 
-    const result = onCreateRoom(createForm);
+    const result = await onCreateRoom(createForm);
     setFeedback(result.message);
 
     if (result.success) {
@@ -32,7 +32,7 @@ const RoomsPage = ({ currentUser, rooms, onCreateRoom, onJoinRoom, getRoomLink }
     }
   };
 
-  const handleJoinSubmit = (event) => {
+  const handleJoinSubmit = async (event) => {
     event.preventDefault();
 
     if (!joinCode.trim()) {
@@ -40,7 +40,7 @@ const RoomsPage = ({ currentUser, rooms, onCreateRoom, onJoinRoom, getRoomLink }
       return;
     }
 
-    const result = onJoinRoom({ code: joinCode });
+    const result = await onJoinRoom({ code: joinCode });
     setFeedback(result.message);
 
     if (result.success) {
