@@ -16,7 +16,7 @@ import ForumPage from './pages/ForumPage';
 import RoomsPage from './pages/RoomsPage';
 import RoomDetailsPage from './pages/RoomDetailsPage';
 import RoomNoteDetailsPage from './pages/RoomNoteDetailsPage';
-import { isCloudSyncEnabled, readDbValue, readManyDbSnapshots, writeDbValue } from './lib/classsyncDb';
+import { deleteDbItem, isCloudSyncEnabled, readDbValue, readManyDbSnapshots, writeDbValue } from './lib/classsyncDb';
 import './App.css';
 
 const STORAGE_KEYS = {
@@ -944,6 +944,10 @@ function App() {
     if (editingNoteId === noteId) {
       setEditingNoteId(null);
     }
+
+    deleteDbItem(DB_KEYS.notes, noteId).catch(() => {
+      // The notes effect keeps local cache in sync; this prevents cloud deletes from blocking the UI.
+    });
   };
 
   const requestDeleteNote = (noteId, options = {}) => {

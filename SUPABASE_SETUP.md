@@ -32,20 +32,20 @@ Run the SQL from [supabase/classsync-schema.sql](/C:/Users/Asus/Desktop/Samem%20
 
 That script creates:
 
-- `app_state`
+- `app_state` for legacy recovery only
+- `classsync_users`
+- `classsync_notes`
+- `classsync_forum_posts`
+- `classsync_rooms`
 
-This table stores the app's shared collections as JSON:
-
-- `users`
-- `notes`
-- `forum`
-- `rooms`
+The new frontend storage model uses one Supabase row per user, note, forum post, and room instead of storing each whole collection in a single shared JSON row.
 
 Important:
 
-- this matches the current frontend architecture, so the migration is fast and keeps the app working on GitHub Pages
-- uploads are stored in the shared note JSON for now, so they can be seen publicly without a separate storage bucket
-- this is a practical starter backend, not a high-security final architecture
+- this is much safer than the old shared-blob design because one stale browser can no longer overwrite the entire users list or the full forum in a single write
+- the SQL also migrates existing legacy `app_state` data into the new per-record tables
+- uploads are still stored inside each note payload for now, so they remain visible without adding a separate storage bucket
+- the current RLS policies stay intentionally simple because the app still uses browser-side auth patterns; they can be hardened later if you add real Supabase Auth
 
 ## 4. Important GitHub Pages note
 
@@ -65,6 +65,7 @@ The repo now includes:
 
 - `.env.example` with the required frontend variables
 - `src/lib/supabaseClient.js` for the shared browser client
-- `supabase/classsync-schema.sql` with the shared state table and policies
+- `src/lib/classsyncDb.js` with the safer per-record sync layer and automatic legacy migration fallback
+- `supabase/classsync-schema.sql` with the new per-record tables, policies, and legacy migration SQL
 
 The app still needs one-time SQL setup in your Supabase dashboard before the live shared database can work.

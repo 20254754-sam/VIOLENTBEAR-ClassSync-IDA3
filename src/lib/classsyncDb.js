@@ -3,7 +3,14 @@ import { isSupabaseConfigured, supabase } from './supabaseClient';
 const DB_NAME = 'classsync-db';
 const DB_VERSION = 1;
 const STORE_NAME = 'app_state';
-const CLOUD_TABLE = 'app_state';
+const LEGACY_CLOUD_TABLE = 'app_state';
+
+const CLOUD_TABLES = {
+  forum: 'classsync_forum_posts',
+  notes: 'classsync_notes',
+  rooms: 'classsync_rooms',
+  users: 'classsync_users'
+};
 
 let dbPromise = null;
 
@@ -45,6 +52,30 @@ const withStore = async (mode, operation) => {
   });
 };
 
+const isArray = (value) => Array.isArray(value);
+
+const dedupeCollection = (items) => {
+  if (!isArray(items)) {
+    return [];
+  }
+
+  const mergedItems = new Map();
+
+  items.forEach((item) => {
+    if (!item || typeof item !== 'object' || item.id === undefined || item.id === null) {
+      return;
+    }
+
+    mergedItems.set(String(item.id), item);
+  });
+
+  return Array.from(mergedItems.values());
+};
+
+const getCollectionTimestamp = (item) => item?.updatedAt || item?.createdAt || new Date().toISOString();
+
+const getCloudTable = (key) => CLOUD_TABLES[key] || null;
+
 const readLocalDbValue = async (key, fallback) => {
   try {
     const result = await withStore('readonly', (store) => store.get(key));
@@ -58,8 +89,19 @@ const writeLocalDbValue = async (key, value) => {
   await withStore('readwrite', (store) => store.put(value, key));
 };
 
-const readCloudDbValue = async (key, fallback) => {
-  const { data, error } = await supabase.from(CLOUD_TABLE).select('value').eq('key', key).maybeSingle();
+const deleteLocalDbItem = async (key, itemId) => {
+  const currentValue = await readLocalDbValue(key, []);
+
+  if (!isArray(currentValue)) {
+    return;
+  }
+
+  const nextValue = currentValue.filter((item) => String(item?.id) !== String(itemId));
+  await writeLocalDbValue(key, nextValue);
+};
+
+const readLegacyCloudDbValue = async (key, fallback) => {
+  const { data, error } = await supabase.from(LEGACY_CLOUD_TABLE).select('value').eq('key', key).maybeSingle();
 
   if (error) {
     throw error;
@@ -68,19 +110,121 @@ const readCloudDbValue = async (key, fallback) => {
   return data?.value ?? fallback;
 };
 
-const writeCloudDbValue = async (key, value) => {
-  const { error } = await supabase.from(CLOUD_TABLE).upsert(
-    {
-      key,
-      value,
-      updated_at: new Date().toISOString()
-    },
-    { onConflict: 'key' }
-  );
+const readCloudCollection = async (key) => {
+  const tableName = getCloudTable(key);
+
+  if (!tableName) {
+    throw new Error(`Unsupported collection key: ${key}`);
+  }
+
+  const { data, error } = await supabase
+    .from(tableName)
+    .select('payload')
+    .order('updated_at', { ascending: false })
+    .order('created_at', { ascending: false });
 
   if (error) {
     throw error;
   }
+
+  return dedupeCollection((data || []).map((row) => row.payload).filter(Boolean));
+};
+
+const upsertCloudCollection = async (key, value) => {
+  const tableName = getCloudTable(key);
+
+  if (!tableName) {
+    throw new Error(`Unsupported collection key: ${key}`);
+  }
+
+  const items = dedupeCollection(value);
+
+  if (items.length === 0) {
+    return;
+  }
+
+  const rows = items.map((item) => ({
+    created_at: item.createdAt || new Date().toISOString(),
+    id: String(item.id),
+    payload: item,
+    updated_at: getCollectionTimestamp(item)
+  }));
+
+  const { error } = await supabase.from(tableName).upsert(rows, { onConflict: 'id' });
+
+  if (error) {
+    throw error;
+  }
+};
+
+const deleteCloudCollectionItem = async (key, itemId) => {
+  const tableName = getCloudTable(key);
+
+  if (!tableName) {
+    throw new Error(`Unsupported collection key: ${key}`);
+  }
+
+  const { error } = await supabase.from(tableName).delete().eq('id', String(itemId));
+
+  if (error) {
+    throw error;
+  }
+};
+
+const migrateLegacyCloudCollection = async (key) => {
+  const legacyValue = await readLegacyCloudDbValue(key, undefined);
+
+  if (!isArray(legacyValue) || legacyValue.length === 0) {
+    return undefined;
+  }
+
+  await upsertCloudCollection(key, legacyValue);
+  return legacyValue;
+};
+
+const readCloudDbValue = async (key, fallback) => {
+  const tableName = getCloudTable(key);
+
+  if (!tableName) {
+    return readLegacyCloudDbValue(key, fallback);
+  }
+
+  const cloudCollection = await readCloudCollection(key);
+
+  if (cloudCollection.length > 0) {
+    return cloudCollection;
+  }
+
+  const migratedValue = await migrateLegacyCloudCollection(key);
+
+  if (migratedValue !== undefined) {
+    return migratedValue;
+  }
+
+  return fallback;
+};
+
+const writeCloudDbValue = async (key, value) => {
+  const tableName = getCloudTable(key);
+
+  if (!tableName) {
+    const { error } = await supabase.from(LEGACY_CLOUD_TABLE).upsert(
+      {
+        key,
+        updated_at: new Date().toISOString(),
+        value
+      },
+      { onConflict: 'key' }
+    );
+
+    if (error) {
+      throw error;
+    }
+
+    return;
+  }
+
+  await upsertCloudCollection(key, value);
 };
 
 export const readDbValue = async (key, fallback) => {
@@ -102,6 +246,14 @@ export const writeDbValue = async (key, value) => {
 
   if (isSupabaseConfigured) {
     await writeCloudDbValue(key, value);
+  }
+};
+
+export const deleteDbItem = async (key, itemId) => {
+  await deleteLocalDbItem(key, itemId);
+
+  if (isSupabaseConfigured && getCloudTable(key)) {
+    await deleteCloudCollectionItem(key, itemId);
   }
 };
 
