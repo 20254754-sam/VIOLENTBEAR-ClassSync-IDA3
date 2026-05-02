@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import BrandLogo from '../components/BrandLogo';
 
 const backgroundNotes = [
@@ -322,6 +323,13 @@ const LoginPage = ({ onLogin, onRegister, theme, onToggleTheme }) => {
               <strong>For student</strong>
               <p>Email: student@classsync.com</p>
               <p>Password: student123</p>
+            </div>
+            <div className="recovery-entry-card">
+              <strong>Missing old data?</strong>
+              <p>Open the recovery scanner on this browser to check if accounts and forum posts are still cached here.</p>
+              <Link to="/recovery" className="recovery-entry-link">
+                Open recovery scanner
+              </Link>
             </div>
           </div>
         </div>

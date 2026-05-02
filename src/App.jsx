@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import AppModal from './components/AppModal';
 import Footer from './components/Footer';
@@ -10,12 +10,13 @@ import NoteDetailsPage from './pages/NoteDetailsPage';
 import ProfilePage from './pages/ProfilePage';
 import AboutPage from './pages/AboutPage';
 import LoginPage from './pages/LoginPage';
+import RecoveryPage from './pages/RecoveryPage';
 import AdminPage from './pages/AdminPage';
 import ForumPage from './pages/ForumPage';
 import RoomsPage from './pages/RoomsPage';
 import RoomDetailsPage from './pages/RoomDetailsPage';
 import RoomNoteDetailsPage from './pages/RoomNoteDetailsPage';
-import { isCloudSyncEnabled, readDbValue, readManyDbValues, writeDbValue } from './lib/classsyncDb';
+import { isCloudSyncEnabled, readDbValue, readManyDbSnapshots, writeDbValue } from './lib/classsyncDb';
 import './App.css';
 
 const STORAGE_KEYS = {
@@ -340,6 +341,58 @@ const readStorage = (key, fallback) => {
   }
 };
 
+const isNonEmptyArray = (value) => Array.isArray(value) && value.length > 0;
+
+const getItemTimestamp = (item) => {
+  if (!item || typeof item !== 'object') {
+    return 0;
+  }
+
+  return new Date(item.updatedAt || item.createdAt || 0).getTime() || 0;
+};
+
+const mergeCollections = (...collections) => {
+  const mergedItems = new Map();
+
+  collections.forEach((collection) => {
+    if (!Array.isArray(collection)) {
+      return;
+    }
+
+    collection.forEach((item) => {
+      if (!item || typeof item !== 'object' || item.id === undefined || item.id === null) {
+        return;
+      }
+
+      const itemKey = String(item.id);
+      const existingItem = mergedItems.get(itemKey);
+
+      if (!existingItem) {
+        mergedItems.set(itemKey, item);
+        return;
+      }
+
+      const nextTimestamp = getItemTimestamp(item);
+      const existingTimestamp = getItemTimestamp(existingItem);
+
+      if (nextTimestamp > existingTimestamp) {
+        mergedItems.set(itemKey, { ...existingItem, ...item });
+        return;
+      }
+
+      mergedItems.set(itemKey, { ...item, ...existingItem });
+    });
+  });
+
+  return Array.from(mergedItems.values());
+};
+
+const sortById = (items) =>
+  [...items].sort((firstItem, secondItem) => String(firstItem.id).localeCompare(String(secondItem.id)));
+
+const areCollectionsEqual = (firstItems, secondItems) =>
+  JSON.stringify(sortById(firstItems)) === JSON.stringify(sortById(secondItems));
+
 const mergeSeedNotes = (storedNotes) => {
   const existingNotes = Array.isArray(storedNotes) ? storedNotes : [];
   const existingIds = new Set(existingNotes.map((note) => note.id));
@@ -397,6 +450,18 @@ const buildInitialForumPosts = (storedPosts) =>
 const buildInitialRooms = (storedRooms) =>
   normalizeRooms(Array.isArray(storedRooms) && storedRooms.length > 0 ? storedRooms : INITIAL_ROOMS);
 
+const resolveUsersState = ({ cloudValue, localDbValue, localStorageValue }) =>
+  buildInitialUsers(mergeCollections(DEMO_USERS, localStorageValue, localDbValue, cloudValue));
+
+const resolveNotesState = ({ cloudValue, localDbValue, localStorageValue }) =>
+  buildInitialNotes(mergeCollections(INITIAL_NOTES, localStorageValue, localDbValue, cloudValue));
+
+const resolveForumState = ({ cloudValue, localDbValue, localStorageValue }) =>
+  buildInitialForumPosts(mergeCollections(INITIAL_FORUM_POSTS, localStorageValue, localDbValue, cloudValue));
+
+const resolveRoomsState = ({ cloudValue, localDbValue, localStorageValue }) =>
+  buildInitialRooms(mergeCollections(INITIAL_ROOMS, localStorageValue, localDbValue, cloudValue));
+
 const generateRoomCode = (existingRooms) => {
   const existingCodes = new Set(existingRooms.map((room) => room.code));
   let nextCode = '';
@@ -431,6 +496,12 @@ function App() {
   const [theme, setTheme] = useState(() => readStorage(STORAGE_KEYS.theme, 'light'));
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [isHydrating, setIsHydrating] = useState(true);
+  const hasSkippedInitialSync = useRef({
+    forum: false,
+    notes: false,
+    rooms: false,
+    users: false
+  });
   const [modalState, setModalState] = useState({
     isOpen: false,
     variant: 'default',
@@ -454,24 +525,72 @@ function App() {
       const localForum = readStorage(STORAGE_KEYS.forum, INITIAL_FORUM_POSTS);
       const localRooms = readStorage(STORAGE_KEYS.rooms, INITIAL_ROOMS);
 
-      const storedData = await readManyDbValues([
-        { key: DB_KEYS.users, fallback: localUsers },
-        { key: DB_KEYS.notes, fallback: localNotes },
-        { key: DB_KEYS.forum, fallback: localForum },
-        { key: DB_KEYS.rooms, fallback: localRooms }
+      const storedSnapshots = await readManyDbSnapshots([
+        { key: DB_KEYS.users },
+        { key: DB_KEYS.notes },
+        { key: DB_KEYS.forum },
+        { key: DB_KEYS.rooms }
       ]);
 
-      const nextUsers = buildInitialUsers(storedData[DB_KEYS.users]);
-      const nextNotes = buildInitialNotes(storedData[DB_KEYS.notes]);
-      const nextForumPosts = buildInitialForumPosts(storedData[DB_KEYS.forum]);
-      const nextRooms = buildInitialRooms(storedData[DB_KEYS.rooms]);
+      const nextUsers = resolveUsersState({
+        cloudValue: storedSnapshots[DB_KEYS.users].cloudValue,
+        localDbValue: storedSnapshots[DB_KEYS.users].localValue,
+        localStorageValue: localUsers
+      });
+      const nextNotes = resolveNotesState({
+        cloudValue: storedSnapshots[DB_KEYS.notes].cloudValue,
+        localDbValue: storedSnapshots[DB_KEYS.notes].localValue,
+        localStorageValue: localNotes
+      });
+      const nextForumPosts = resolveForumState({
+        cloudValue: storedSnapshots[DB_KEYS.forum].cloudValue,
+        localDbValue: storedSnapshots[DB_KEYS.forum].localValue,
+        localStorageValue: localForum
+      });
+      const nextRooms = resolveRoomsState({
+        cloudValue: storedSnapshots[DB_KEYS.rooms].cloudValue,
+        localDbValue: storedSnapshots[DB_KEYS.rooms].localValue,
+        localStorageValue: localRooms
+      });
 
-      await Promise.all([
-        writeDbValue(DB_KEYS.users, nextUsers),
-        writeDbValue(DB_KEYS.notes, nextNotes),
-        writeDbValue(DB_KEYS.forum, nextForumPosts),
-        writeDbValue(DB_KEYS.rooms, nextRooms)
-      ]);
+      const pendingWrites = [
+        {
+          key: DB_KEYS.users,
+          nextValue: nextUsers,
+          snapshot: storedSnapshots[DB_KEYS.users]
+        },
+        {
+          key: DB_KEYS.notes,
+          nextValue: nextNotes,
+          snapshot: storedSnapshots[DB_KEYS.notes]
+        },
+        {
+          key: DB_KEYS.forum,
+          nextValue: nextForumPosts,
+          snapshot: storedSnapshots[DB_KEYS.forum]
+        },
+        {
+          key: DB_KEYS.rooms,
+          nextValue: nextRooms,
+          snapshot: storedSnapshots[DB_KEYS.rooms]
+        }
+      ]
+        .filter(({ nextValue, snapshot }) => {
+          if (!snapshot.hasCloudAccess) {
+            return false;
+          }
+
+          if (!isNonEmptyArray(snapshot.cloudValue)) {
+            return isNonEmptyArray(snapshot.localValue) || nextValue.length > 0;
+          }
+
+          return !areCollectionsEqual(snapshot.cloudValue, nextValue);
+        })
+        .map(({ key, nextValue }) => writeDbValue(key, nextValue));
+
+      if (pendingWrites.length > 0) {
+        await Promise.all(pendingWrites);
+      }
 
       if (!isActive) {
         return;
@@ -506,6 +625,11 @@ function App() {
       return;
     }
 
+    if (!hasSkippedInitialSync.current.notes) {
+      hasSkippedInitialSync.current.notes = true;
+      return;
+    }
+
     writeDbValue(DB_KEYS.notes, notes).catch(() => {
       window.localStorage.setItem(STORAGE_KEYS.notes, JSON.stringify(notes));
     });
@@ -513,6 +637,11 @@ function App() {
 
   useEffect(() => {
     if (isHydrating) {
+      return;
+    }
+
+    if (!hasSkippedInitialSync.current.users) {
+      hasSkippedInitialSync.current.users = true;
       return;
     }
 
@@ -526,6 +655,11 @@ function App() {
       return;
     }
 
+    if (!hasSkippedInitialSync.current.forum) {
+      hasSkippedInitialSync.current.forum = true;
+      return;
+    }
+
     writeDbValue(DB_KEYS.forum, forumPosts).catch(() => {
       window.localStorage.setItem(STORAGE_KEYS.forum, JSON.stringify(forumPosts));
     });
@@ -533,6 +667,11 @@ function App() {
 
   useEffect(() => {
     if (isHydrating) {
+      return;
+    }
+
+    if (!hasSkippedInitialSync.current.rooms) {
+      hasSkippedInitialSync.current.rooms = true;
       return;
     }
 
@@ -1199,7 +1338,7 @@ function App() {
       <div className="app app-loading-shell">
         <div className="app-loading-card">
           <p className="auth-eyebrow">ClassSync</p>
-          <h1>Loading your study space</h1>
+          <h1>Loading your study space...</h1>
           <p>
             {isCloudSyncEnabled
               ? 'Preparing notes, rooms, forum posts, and shared accounts from the Supabase database.'
@@ -1222,6 +1361,17 @@ function App() {
                 onRegister={handleRegister}
                 theme={theme}
                 onToggleTheme={toggleTheme}
+              />
+            }
+          />
+          <Route
+            path="/recovery"
+            element={
+              <RecoveryPage
+                storageKeys={STORAGE_KEYS}
+                dbKeys={DB_KEYS}
+                seedUsers={DEMO_USERS}
+                seedForumPosts={INITIAL_FORUM_POSTS}
               />
             }
           />

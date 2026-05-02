@@ -114,4 +114,48 @@ export const readManyDbValues = async (entries) => {
   }, {});
 };
 
+export const readDbSnapshot = async (key) => {
+  const localValue = await readLocalDbValue(key, undefined);
+
+  if (!isSupabaseConfigured) {
+    return {
+      cloudError: null,
+      cloudValue: undefined,
+      hasCloudAccess: false,
+      localValue
+    };
+  }
+
+  try {
+    const cloudValue = await readCloudDbValue(key, undefined);
+
+    if (cloudValue !== undefined) {
+      await writeLocalDbValue(key, cloudValue);
+    }
+
+    return {
+      cloudError: null,
+      cloudValue,
+      hasCloudAccess: true,
+      localValue
+    };
+  } catch (cloudError) {
+    return {
+      cloudError,
+      cloudValue: undefined,
+      hasCloudAccess: false,
+      localValue
+    };
+  }
+};
+
+export const readManyDbSnapshots = async (entries) => {
+  const snapshots = await Promise.all(entries.map(({ key }) => readDbSnapshot(key)));
+
+  return entries.reduce((accumulator, entry, index) => {
+    accumulator[entry.key] = snapshots[index];
+    return accumulator;
+  }, {});
+};
+
 export const isCloudSyncEnabled = isSupabaseConfigured;

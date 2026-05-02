@@ -3188,6 +3188,138 @@ html[data-theme='dark'] .auth-note {
   color: var(--muted);
 }
 
+.recovery-entry-card {
+  margin-top: 0.45rem;
+  padding: 0.5rem 0.56rem;
+  border-radius: 12px;
+  border: 1px solid rgba(91, 116, 214, 0.16);
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.recovery-entry-card strong,
+.recovery-panel h2 {
+  display: inline-block;
+  margin-bottom: 0.12rem;
+  font-size: 0.8rem;
+  color: var(--accent-strong);
+}
+
+.recovery-entry-card p,
+.recovery-panel p,
+.recovery-intro,
+.recovery-hint-list p,
+.recovery-status span,
+.recovery-restore-panel p {
+  margin: 0.05rem 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.recovery-entry-link,
+.recovery-link-button,
+.recovery-secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 1rem;
+  border-radius: 14px;
+  border: 1px solid rgba(91, 116, 214, 0.16);
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--accent-strong);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.recovery-entry-link {
+  margin-top: 0.45rem;
+}
+
+.recovery-shell {
+  min-height: 100vh;
+  padding: clamp(1.2rem, 3vw, 2rem);
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(circle at top left, rgba(91, 116, 214, 0.18), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(240, 139, 168, 0.16), transparent 28%),
+    linear-gradient(180deg, rgba(244, 247, 255, 0.96), rgba(252, 246, 250, 0.94));
+}
+
+.recovery-card {
+  width: min(760px, 100%);
+  padding: clamp(1.2rem, 3vw, 2rem);
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 1px solid rgba(91, 116, 214, 0.14);
+  box-shadow: 0 24px 64px rgba(38, 53, 96, 0.14);
+}
+
+.recovery-brand {
+  margin-bottom: 0.65rem;
+}
+
+.recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  margin-top: 1rem;
+}
+
+.recovery-actions .auth-submit-button,
+.recovery-actions .recovery-secondary-button,
+.recovery-actions .recovery-link-button {
+  width: auto;
+}
+
+.recovery-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.recovery-panel,
+.recovery-restore-panel,
+.recovery-status {
+  padding: 1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(91, 116, 214, 0.14);
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.recovery-status {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.recovery-status-good {
+  border-color: rgba(32, 135, 92, 0.28);
+  background: rgba(225, 247, 237, 0.88);
+}
+
+.recovery-status-empty {
+  border-color: rgba(180, 114, 41, 0.2);
+  background: rgba(255, 245, 230, 0.84);
+}
+
+.recovery-hint-list {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.recovery-restore-panel {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.recovery-feedback {
+  margin-top: 0.9rem;
+}
+
 html[data-theme='dark'] .demo-credentials {
   background: linear-gradient(135deg, rgba(140, 163, 255, 0.16), rgba(255, 157, 181, 0.12));
   border-color: rgba(140, 163, 255, 0.14);
@@ -3199,6 +3331,44 @@ html[data-theme='dark'] .demo-credential-card {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
     0 8px 18px rgba(0, 0, 0, 0.12);
+}
+
+html[data-theme='dark'] .recovery-entry-card,
+html[data-theme='dark'] .recovery-panel,
+html[data-theme='dark'] .recovery-restore-panel,
+html[data-theme='dark'] .recovery-status {
+  background: rgba(20, 27, 43, 0.86);
+  border-color: rgba(140, 163, 255, 0.16);
+}
+
+html[data-theme='dark'] .recovery-entry-link,
+html[data-theme='dark'] .recovery-link-button,
+html[data-theme='dark'] .recovery-secondary-button {
+  background: rgba(20, 27, 43, 0.86);
+  border-color: rgba(140, 163, 255, 0.2);
+}
+
+html[data-theme='dark'] .recovery-shell {
+  background:
+    radial-gradient(circle at top left, rgba(108, 132, 230, 0.26), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(233, 134, 161, 0.2), transparent 28%),
+    linear-gradient(180deg, rgba(8, 11, 19, 0.98), rgba(18, 14, 24, 0.98));
+}
+
+html[data-theme='dark'] .recovery-card {
+  background: rgba(13, 17, 28, 0.88);
+  border-color: rgba(140, 163, 255, 0.16);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35);
+}
+
+html[data-theme='dark'] .recovery-status-good {
+  background: rgba(20, 66, 47, 0.52);
+  border-color: rgba(74, 192, 132, 0.28);
+}
+
+html[data-theme='dark'] .recovery-status-empty {
+  background: rgba(89, 63, 20, 0.42);
+  border-color: rgba(222, 161, 83, 0.28);
 }
 
 .password-field {
