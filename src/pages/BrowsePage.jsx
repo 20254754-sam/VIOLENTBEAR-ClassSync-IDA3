@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import SearchBar from '../components/SearchBar';
 import NoteList from '../components/NoteList';
+import UserAvatar from '../components/UserAvatar';
 
-const BrowsePage = ({ notes, currentUser, onToggleLike, onDelete, onEdit }) => {
+const BrowsePage = ({ notes, users, currentUser, onToggleLike, onDelete, onEdit }) => {
   const [query, setQuery] = useState('');
 
   const filteredNotes = useMemo(() => {
@@ -16,6 +18,26 @@ const BrowsePage = ({ notes, currentUser, onToggleLike, onDelete, onEdit }) => {
       note.content.toLowerCase().includes(query.toLowerCase())
     );
   }, [notes, query]);
+
+  const matchingUsers = useMemo(() => {
+    if (!query.trim()) {
+      return [];
+    }
+
+    const normalizedQuery = query.toLowerCase();
+
+    return users.filter((user) => {
+      if (user.id === currentUser.id) {
+        return false;
+      }
+
+      return (
+        user.name.toLowerCase().includes(normalizedQuery) ||
+        user.email.toLowerCase().includes(normalizedQuery) ||
+        user.course.toLowerCase().includes(normalizedQuery)
+      );
+    });
+  }, [currentUser.id, query, users]);
 
   useEffect(() => {
     if (!notes.length) {
@@ -31,6 +53,31 @@ const BrowsePage = ({ notes, currentUser, onToggleLike, onDelete, onEdit }) => {
         <p>Only notes approved by the admin are visible here.</p>
       </div>
       <SearchBar onSearch={setQuery} />
+
+      {matchingUsers.length > 0 && (
+        <section className="user-search-section">
+          <div className="upload-subtitle">
+            <p>{matchingUsers.length} matching user account(s)</p>
+            <p>Open a public profile or view someone&apos;s shared notes from there.</p>
+          </div>
+          <div className="user-search-list">
+            {matchingUsers.map((user) => (
+              <article key={user.id} className="user-search-card">
+                <UserAvatar user={user} size="md" />
+                <div className="user-search-card-copy">
+                  <strong>{user.name}</strong>
+                  <p>{user.role === 'admin' ? 'Admin' : user.course || 'Student'}</p>
+                  <small>{user.profileVisibility === 'public' ? 'Public profile' : 'Private profile with public notes'}</small>
+                </div>
+                <div className="user-search-card-actions">
+                  <Link to={`/users/${user.id}`} className="card-link-button">View profile</Link>
+                  <Link to={`/messages?user=${user.id}`} className="card-link-button">Message</Link>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       {filteredNotes.length > 0 ? (
         <NoteList

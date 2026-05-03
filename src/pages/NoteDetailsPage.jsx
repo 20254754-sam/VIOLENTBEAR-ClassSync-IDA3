@@ -1,5 +1,16 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import AttachmentGallery from '../components/AttachmentGallery';
+import UserAvatar from '../components/UserAvatar';
+
+const ReportIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path
+      d="M6 3.5a1 1 0 0 1 1 1v.8h9.05a1.75 1.75 0 0 1 1.52 2.62l-1.44 2.46 1.44 2.46a1.75 1.75 0 0 1-1.52 2.62H7V20a1 1 0 1 1-2 0V4.5a1 1 0 0 1 1-1m1 3.8v5.6h9.05l-1.73-2.95a1 1 0 0 1 0-1.01l1.73-2.94z"
+      fill="currentColor"
+    />
+  </svg>
+);
 
 const formatDate = (dateValue) =>
   new Date(dateValue).toLocaleDateString('en-US', {
@@ -8,7 +19,7 @@ const formatDate = (dateValue) =>
     year: 'numeric'
   });
 
-const NoteDetailsPage = ({ notes, currentUser, onToggleLike, onDelete, onEdit, onSubmitReview }) => {
+const NoteDetailsPage = ({ notes, users, currentUser, onToggleLike, onDelete, onEdit, onSubmitReview, onReport }) => {
   const { id } = useParams();
   const navigate = useNavigate();
   const note = notes.find((item) => item.id === Number(id));
@@ -18,6 +29,7 @@ const NoteDetailsPage = ({ notes, currentUser, onToggleLike, onDelete, onEdit, o
   const hasSource = note?.isOwnWork === false && note?.source;
   const isUploader = note && currentUser && note.uploaderId === currentUser.id;
   const liked = note && currentUser ? note.likes.includes(currentUser.id) : false;
+  const uploader = users.find((user) => user.id === note?.uploaderId) || null;
 
   const averageRating = useMemo(() => {
     if (!note || note.reviews.length === 0) {
@@ -58,10 +70,29 @@ const NoteDetailsPage = ({ notes, currentUser, onToggleLike, onDelete, onEdit, o
         <Link to="/browse" className="back-btn-small">Back</Link>
         <div className="note-title-info">
           <div className="note-badge-row">
-            <span className={`ownership-badge ${hasSource ? 'ownership-badge-referenced' : 'ownership-badge-original'}`}>
-              {hasSource ? 'Referenced material' : 'Original work'}
-            </span>
-            <span className={`status-pill status-${note.status}`}>{note.status}</span>
+            <div className="note-badge-row-copy">
+              <span className={`ownership-badge ${hasSource ? 'ownership-badge-referenced' : 'ownership-badge-original'}`}>
+                {hasSource ? 'Referenced material' : 'Original work'}
+              </span>
+              <span className={`status-pill status-${note.status}`}>{note.status}</span>
+            </div>
+            {!isUploader && currentUser.role !== 'admin' && (
+              <button
+                type="button"
+                className="report-icon-button"
+                aria-label={`Report note: ${note.title}`}
+                onClick={() =>
+                  onReport({
+                    targetId: note.id,
+                    targetType: 'note',
+                    targetTitle: note.title,
+                    roomId: note.roomId
+                  })
+                }
+              >
+                <ReportIcon />
+              </button>
+            )}
           </div>
           <h1>{note.title}</h1>
           <div className="note-info">
@@ -70,6 +101,12 @@ const NoteDetailsPage = ({ notes, currentUser, onToggleLike, onDelete, onEdit, o
               Uploaded by {note.uploaderName} on {formatDate(note.updatedAt || note.createdAt)}
             </span>
           </div>
+          {uploader && (
+            <Link to={uploader.id === currentUser.id ? '/profile' : `/users/${uploader.id}`} className="note-uploader-link">
+              <UserAvatar user={uploader} size="sm" />
+              <span>Open {uploader.name}&apos;s profile</span>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -154,22 +191,7 @@ const NoteDetailsPage = ({ notes, currentUser, onToggleLike, onDelete, onEdit, o
       {note.attachments?.length > 0 && (
         <section className="citation-panel">
           <h2>Attached Files</h2>
-          <div className="attachment-view-list">
-            {note.attachments.map((attachment) => (
-              <article key={attachment.id} className="attachment-card">
-                <div className="attachment-card-copy">
-                  <strong>{attachment.name}</strong>
-                  <small>{attachment.isImage ? 'Image attachment' : 'File attachment'}</small>
-                </div>
-                {attachment.isImage && (
-                  <img src={attachment.url} alt={attachment.name} className="attachment-image-preview" />
-                )}
-                <a href={attachment.url} target="_blank" rel="noreferrer" className="attachment-view-button">
-                  {attachment.isImage ? 'View image' : 'Open file'}
-                </a>
-              </article>
-            ))}
-          </div>
+          <AttachmentGallery attachments={note.attachments} />
         </section>
       )}
 

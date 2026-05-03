@@ -1,6 +1,15 @@
 import React, { useState } from 'react';
 import ForumVoteControls from '../components/ForumVoteControls';
 
+const ReportIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path
+      d="M6 3.5a1 1 0 0 1 1 1v.8h9.05a1.75 1.75 0 0 1 1.52 2.62l-1.44 2.46 1.44 2.46a1.75 1.75 0 0 1-1.52 2.62H7V20a1 1 0 1 1-2 0V4.5a1 1 0 0 1 1-1m1 3.8v5.6h9.05l-1.73-2.95a1 1 0 0 1 0-1.01l1.73-2.94z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
 const formatDate = (dateValue) =>
   new Date(dateValue).toLocaleDateString('en-US', {
     month: 'short',
@@ -8,7 +17,7 @@ const formatDate = (dateValue) =>
     year: 'numeric'
   });
 
-const ForumPage = ({ currentUser, posts, onCreatePost, onVote, onComment }) => {
+const ForumPage = ({ currentUser, posts, onCreatePost, onVote, onComment, onReport }) => {
   const [postForm, setPostForm] = useState({
     title: '',
     body: '',
@@ -77,10 +86,29 @@ const ForumPage = ({ currentUser, posts, onCreatePost, onVote, onComment }) => {
 
             <div className="forum-post-body">
               <div className="forum-post-meta">
-                <span className="status-pill status-neutral">{post.tag}</span>
-                <small>
-                  {post.authorName} - {formatDate(post.createdAt)}
-                </small>
+                <div className="forum-post-meta-copy">
+                  <span className="status-pill status-neutral">{post.tag}</span>
+                  <small>
+                    {post.authorName} - {formatDate(post.createdAt)}
+                  </small>
+                </div>
+                {currentUser.id !== post.authorId && (
+                  <button
+                    type="button"
+                    className="report-icon-button"
+                    aria-label={`Report post: ${post.title}`}
+                    onClick={() =>
+                      onReport({
+                        targetId: post.id,
+                        targetType: 'forum-post',
+                        targetTitle: post.title,
+                        roomId: post.roomId
+                      })
+                    }
+                  >
+                    <ReportIcon />
+                  </button>
+                )}
               </div>
               <h3>{post.title}</h3>
               <p>{post.body}</p>

@@ -7,7 +7,10 @@ const LEGACY_CLOUD_TABLE = 'app_state';
 
 const CLOUD_TABLES = {
   forum: 'classsync_forum_posts',
+  messages: 'classsync_messages',
   notes: 'classsync_notes',
+  notifications: 'classsync_notifications',
+  reports: 'classsync_reports',
   rooms: 'classsync_rooms',
   users: 'classsync_users'
 };

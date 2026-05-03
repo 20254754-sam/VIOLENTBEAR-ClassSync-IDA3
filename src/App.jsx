@@ -13,6 +13,8 @@ import LoginPage from './pages/LoginPage';
 import RecoveryPage from './pages/RecoveryPage';
 import AdminPage from './pages/AdminPage';
 import ForumPage from './pages/ForumPage';
+import MessagesPage from './pages/MessagesPage';
+import NotificationsPage from './pages/NotificationsPage';
 import RoomsPage from './pages/RoomsPage';
 import RoomDetailsPage from './pages/RoomDetailsPage';
 import RoomNoteDetailsPage from './pages/RoomNoteDetailsPage';
@@ -22,6 +24,9 @@ import './App.css';
 const STORAGE_KEYS = {
   notes: 'classsync-notes-v2',
   forum: 'classsync-forum-v2',
+  messages: 'classsync-messages-v1',
+  notifications: 'classsync-notifications-v1',
+  reports: 'classsync-reports-v1',
   rooms: 'classsync-rooms-v1',
   user: 'classsync-user-v2',
   theme: 'classsync-theme-v2',
@@ -31,6 +36,9 @@ const STORAGE_KEYS = {
 const DB_KEYS = {
   notes: 'notes',
   forum: 'forum',
+  messages: 'messages',
+  notifications: 'notifications',
+  reports: 'reports',
   rooms: 'rooms',
   users: 'users'
 };
@@ -42,7 +50,14 @@ const DEMO_USERS = [
     email: 'student@classsync.com',
     password: 'student123',
     role: 'student',
-    bio: 'BSIT student who shares concise reviewers and practical study notes.'
+    bio: 'BSIT student who shares concise reviewers and practical study notes.',
+    course: 'BSIT',
+    yearLevel: '2nd Year',
+    profileVisibility: 'public',
+    profilePicture: '',
+    securityQuestion: 'What is your favorite study snack?',
+    securityAnswer: 'chips',
+    joinedAt: '2026-04-01T08:30:00.000Z'
   },
   {
     id: 'admin-1',
@@ -50,8 +65,25 @@ const DEMO_USERS = [
     email: 'admin@classsync.com',
     password: 'admin123',
     role: 'admin',
-    bio: 'Reviews submitted notes before they become visible to the whole community.'
+    bio: 'Reviews submitted notes before they become visible to the whole community.',
+    course: 'Administration',
+    yearLevel: 'Faculty',
+    profileVisibility: 'public',
+    profilePicture: '',
+    securityQuestion: 'What city were you born in?',
+    securityAnswer: 'manila',
+    joinedAt: '2026-04-01T08:00:00.000Z'
   }
+];
+
+const PROFILE_VISIBILITY_OPTIONS = ['public', 'private'];
+
+const SECURITY_QUESTIONS = [
+  'What is your favorite study snack?',
+  'What city were you born in?',
+  'What was the name of your first school?',
+  'What subject do you enjoy the most?',
+  'What is your dream job?'
 ];
 
 const INITIAL_NOTES = [
@@ -332,6 +364,10 @@ const INITIAL_ROOMS = [
   }
 ];
 
+const INITIAL_NOTIFICATIONS = [];
+const INITIAL_REPORTS = [];
+const INITIAL_MESSAGES = [];
+
 const readStorage = (key, fallback) => {
   try {
     const stored = window.localStorage.getItem(key);
@@ -339,6 +375,46 @@ const readStorage = (key, fallback) => {
   } catch {
     return fallback;
   }
+};
+
+const escapeSvgText = (value) =>
+  String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const buildDefaultProfilePicture = (name, role = 'student') => {
+  const label = (name || 'ClassSync')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || '')
+    .join('') || 'CS';
+  const palette =
+    role === 'admin'
+      ? { background: '#1d4ed8', accent: '#dbeafe', text: '#f8fbff' }
+      : { background: '#7c3aed', accent: '#fce7f3', text: '#ffffff' };
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">
+      <defs>
+        <linearGradient id="avatarGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="${palette.background}" />
+          <stop offset="100%" stop-color="#f97316" />
+        </linearGradient>
+      </defs>
+      <rect width="160" height="160" rx="40" fill="url(#avatarGradient)" />
+      <circle cx="80" cy="58" r="26" fill="${palette.accent}" opacity="0.3" />
+      <path d="M34 132c8-28 28-42 46-42s38 14 46 42" fill="${palette.accent}" opacity="0.22" />
+      <text x="80" y="95" text-anchor="middle" font-family="Arial, sans-serif" font-size="42" font-weight="700" fill="${palette.text}">
+        ${escapeSvgText(label)}
+      </text>
+    </svg>
+  `;
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 };
 
 const isNonEmptyArray = (value) => Array.isArray(value) && value.length > 0;
@@ -424,7 +500,10 @@ const normalizeNotes = (notes) =>
     ...note,
     roomId: note.roomId || null,
     visibility: note.visibility || (note.roomId ? 'room' : 'public'),
-    attachments: note.attachments || [],
+    attachments: (note.attachments || []).map((attachment) => ({
+      ...attachment,
+      attachedAt: attachment.attachedAt || note.updatedAt || note.createdAt || new Date().toISOString()
+    })),
     likes: note.likes || [],
     reviews: note.reviews || []
   }));
@@ -436,9 +515,82 @@ const normalizeRooms = (rooms) =>
     memberIds: [...new Set(room.memberIds || [])]
   }));
 
+const normalizeReports = (reports) =>
+  (reports || []).map((report) => ({
+    ...report,
+    status: report.status || 'open',
+    createdAt: report.createdAt || new Date().toISOString()
+  }));
+
+const normalizeNotifications = (notifications) =>
+  (notifications || []).map((notification) => ({
+    ...notification,
+    createdAt: notification.createdAt || new Date().toISOString(),
+    readAt: notification.readAt || null
+  }));
+
+const normalizeMessages = (messages) =>
+  (messages || []).map((message) => ({
+    ...message,
+    type: message.type || 'direct',
+    roomId: message.roomId || null,
+    participants: [...new Set(message.participants || [])],
+    readBy: [...new Set(message.readBy || [message.senderId].filter(Boolean))],
+    conversationKey:
+      message.conversationKey ||
+      (message.type === 'room'
+        ? `room:${message.roomId || 'unknown'}`
+        : `direct:${[...(message.participants || [])].map(String).sort().join(':')}`),
+    createdAt: message.createdAt || new Date().toISOString(),
+    updatedAt: message.updatedAt || message.createdAt || new Date().toISOString()
+  }));
+
+const normalizeUserRecord = (user) => {
+  const normalizedName = user?.name?.trim() || 'ClassSync User';
+  const normalizedRole = user?.role || 'student';
+
+  return {
+    ...user,
+    name: normalizedName,
+    bio:
+      user?.bio?.trim() ||
+      (normalizedRole === 'admin'
+        ? 'Keeps the ClassSync space organized for everyone.'
+        : 'ClassSync member who shares notes and learns with classmates.'),
+    course: user?.course?.trim() || '',
+    yearLevel: user?.yearLevel?.trim() || '',
+    profileVisibility: PROFILE_VISIBILITY_OPTIONS.includes(user?.profileVisibility) ? user.profileVisibility : 'public',
+    joinedAt: user?.joinedAt || user?.createdAt || new Date().toISOString(),
+    profilePicture: user?.profilePicture || buildDefaultProfilePicture(normalizedName, normalizedRole),
+    securityQuestion: user?.securityQuestion || SECURITY_QUESTIONS[0],
+    securityAnswer: user?.securityAnswer?.trim()?.toLowerCase() || ''
+  };
+};
+
+const buildSessionUser = (user) => {
+  if (!user) {
+    return null;
+  }
+
+  const normalizedUser = normalizeUserRecord(user);
+
+  return {
+    bio: normalizedUser.bio,
+    course: normalizedUser.course,
+    email: normalizedUser.email,
+    id: normalizedUser.id,
+    joinedAt: normalizedUser.joinedAt,
+    name: normalizedUser.name,
+    profilePicture: normalizedUser.profilePicture,
+    profileVisibility: normalizedUser.profileVisibility,
+    role: normalizedUser.role,
+    yearLevel: normalizedUser.yearLevel
+  };
+};
+
 const buildInitialUsers = (storedUsers) => {
   const nextUsers = Array.isArray(storedUsers) && storedUsers.length > 0 ? storedUsers : DEMO_USERS;
-  return nextUsers;
+  return nextUsers.map(normalizeUserRecord);
 };
 
 const buildInitialNotes = (storedNotes) =>
@@ -449,6 +601,17 @@ const buildInitialForumPosts = (storedPosts) =>
 
 const buildInitialRooms = (storedRooms) =>
   normalizeRooms(Array.isArray(storedRooms) && storedRooms.length > 0 ? storedRooms : INITIAL_ROOMS);
+
+const buildInitialReports = (storedReports) =>
+  normalizeReports(Array.isArray(storedReports) && storedReports.length > 0 ? storedReports : INITIAL_REPORTS);
+
+const buildInitialNotifications = (storedNotifications) =>
+  normalizeNotifications(
+    Array.isArray(storedNotifications) && storedNotifications.length > 0 ? storedNotifications : INITIAL_NOTIFICATIONS
+  );
+
+const buildInitialMessages = (storedMessages) =>
+  normalizeMessages(Array.isArray(storedMessages) && storedMessages.length > 0 ? storedMessages : INITIAL_MESSAGES);
 
 const resolveUsersState = ({ cloudValue, localDbValue, localStorageValue }) =>
   buildInitialUsers(mergeCollections(DEMO_USERS, localStorageValue, localDbValue, cloudValue));
@@ -461,6 +624,15 @@ const resolveForumState = ({ cloudValue, localDbValue, localStorageValue }) =>
 
 const resolveRoomsState = ({ cloudValue, localDbValue, localStorageValue }) =>
   buildInitialRooms(mergeCollections(INITIAL_ROOMS, localStorageValue, localDbValue, cloudValue));
+
+const resolveReportsState = ({ cloudValue, localDbValue, localStorageValue }) =>
+  buildInitialReports(mergeCollections(INITIAL_REPORTS, localStorageValue, localDbValue, cloudValue));
+
+const resolveNotificationsState = ({ cloudValue, localDbValue, localStorageValue }) =>
+  buildInitialNotifications(mergeCollections(INITIAL_NOTIFICATIONS, localStorageValue, localDbValue, cloudValue));
+
+const resolveMessagesState = ({ cloudValue, localDbValue, localStorageValue }) =>
+  buildInitialMessages(mergeCollections(INITIAL_MESSAGES, localStorageValue, localDbValue, cloudValue));
 
 const generateRoomCode = (existingRooms) => {
   const existingCodes = new Set(existingRooms.map((room) => room.code));
@@ -491,14 +663,21 @@ function App() {
   const [users, setUsers] = useState(DEMO_USERS);
   const [notes, setNotes] = useState(() => normalizeNotes(INITIAL_NOTES));
   const [forumPosts, setForumPosts] = useState(() => normalizeForumPosts(INITIAL_FORUM_POSTS));
+  const [messages, setMessages] = useState(() => normalizeMessages(INITIAL_MESSAGES));
+  const [notifications, setNotifications] = useState(() => normalizeNotifications(INITIAL_NOTIFICATIONS));
+  const [reports, setReports] = useState(() => normalizeReports(INITIAL_REPORTS));
   const [rooms, setRooms] = useState(() => normalizeRooms(INITIAL_ROOMS));
-  const [currentUser, setCurrentUser] = useState(() => readStorage(STORAGE_KEYS.user, null));
+  const [currentUser, setCurrentUser] = useState(() => buildSessionUser(readStorage(STORAGE_KEYS.user, null)));
   const [theme, setTheme] = useState(() => readStorage(STORAGE_KEYS.theme, 'light'));
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [isHydrating, setIsHydrating] = useState(true);
+  const [hydrationProgress, setHydrationProgress] = useState(12);
   const hasSkippedInitialSync = useRef({
     forum: false,
+    messages: false,
     notes: false,
+    notifications: false,
+    reports: false,
     rooms: false,
     users: false
   });
@@ -518,17 +697,62 @@ function App() {
 
   useEffect(() => {
     let isActive = true;
+    let progressTimer = null;
+    const finishHydration = async (
+      nextUsers,
+      nextNotes,
+      nextForumPosts,
+      nextMessages,
+      nextNotifications,
+      nextReports,
+      nextRooms
+    ) => {
+      if (!isActive) {
+        return;
+      }
+
+      setUsers(nextUsers);
+      setNotes(nextNotes);
+      setForumPosts(nextForumPosts);
+      setMessages(nextMessages);
+      setNotifications(nextNotifications);
+      setReports(nextReports);
+      setRooms(nextRooms);
+      setHydrationProgress(100);
+
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, 220);
+      });
+
+      if (!isActive) {
+        return;
+      }
+
+      setIsHydrating(false);
+    };
+
+    setHydrationProgress(12);
+
+    progressTimer = window.setInterval(() => {
+      setHydrationProgress((currentValue) => (currentValue >= 88 ? currentValue : currentValue + 6));
+    }, 160);
 
     const hydrateDatabase = async () => {
       const localUsers = readStorage(STORAGE_KEYS.users, DEMO_USERS);
       const localNotes = readStorage(STORAGE_KEYS.notes, INITIAL_NOTES);
       const localForum = readStorage(STORAGE_KEYS.forum, INITIAL_FORUM_POSTS);
+      const localMessages = readStorage(STORAGE_KEYS.messages, INITIAL_MESSAGES);
+      const localNotifications = readStorage(STORAGE_KEYS.notifications, INITIAL_NOTIFICATIONS);
+      const localReports = readStorage(STORAGE_KEYS.reports, INITIAL_REPORTS);
       const localRooms = readStorage(STORAGE_KEYS.rooms, INITIAL_ROOMS);
 
       const storedSnapshots = await readManyDbSnapshots([
         { key: DB_KEYS.users },
         { key: DB_KEYS.notes },
         { key: DB_KEYS.forum },
+        { key: DB_KEYS.messages },
+        { key: DB_KEYS.notifications },
+        { key: DB_KEYS.reports },
         { key: DB_KEYS.rooms }
       ]);
 
@@ -546,6 +770,21 @@ function App() {
         cloudValue: storedSnapshots[DB_KEYS.forum].cloudValue,
         localDbValue: storedSnapshots[DB_KEYS.forum].localValue,
         localStorageValue: localForum
+      });
+      const nextMessages = resolveMessagesState({
+        cloudValue: storedSnapshots[DB_KEYS.messages].cloudValue,
+        localDbValue: storedSnapshots[DB_KEYS.messages].localValue,
+        localStorageValue: localMessages
+      });
+      const nextNotifications = resolveNotificationsState({
+        cloudValue: storedSnapshots[DB_KEYS.notifications].cloudValue,
+        localDbValue: storedSnapshots[DB_KEYS.notifications].localValue,
+        localStorageValue: localNotifications
+      });
+      const nextReports = resolveReportsState({
+        cloudValue: storedSnapshots[DB_KEYS.reports].cloudValue,
+        localDbValue: storedSnapshots[DB_KEYS.reports].localValue,
+        localStorageValue: localReports
       });
       const nextRooms = resolveRoomsState({
         cloudValue: storedSnapshots[DB_KEYS.rooms].cloudValue,
@@ -570,6 +809,21 @@ function App() {
           snapshot: storedSnapshots[DB_KEYS.forum]
         },
         {
+          key: DB_KEYS.messages,
+          nextValue: nextMessages,
+          snapshot: storedSnapshots[DB_KEYS.messages]
+        },
+        {
+          key: DB_KEYS.notifications,
+          nextValue: nextNotifications,
+          snapshot: storedSnapshots[DB_KEYS.notifications]
+        },
+        {
+          key: DB_KEYS.reports,
+          nextValue: nextReports,
+          snapshot: storedSnapshots[DB_KEYS.reports]
+        },
+        {
           key: DB_KEYS.rooms,
           nextValue: nextRooms,
           snapshot: storedSnapshots[DB_KEYS.rooms]
@@ -592,31 +846,30 @@ function App() {
         await Promise.all(pendingWrites);
       }
 
-      if (!isActive) {
-        return;
-      }
-
-      setUsers(nextUsers);
-      setNotes(nextNotes);
-      setForumPosts(nextForumPosts);
-      setRooms(nextRooms);
-      setIsHydrating(false);
+      await finishHydration(nextUsers, nextNotes, nextForumPosts, nextMessages, nextNotifications, nextReports, nextRooms);
     };
 
-    hydrateDatabase().catch(() => {
+    hydrateDatabase().catch(async () => {
       if (!isActive) {
         return;
       }
 
-      setUsers(buildInitialUsers(readStorage(STORAGE_KEYS.users, DEMO_USERS)));
-      setNotes(buildInitialNotes(readStorage(STORAGE_KEYS.notes, INITIAL_NOTES)));
-      setForumPosts(buildInitialForumPosts(readStorage(STORAGE_KEYS.forum, INITIAL_FORUM_POSTS)));
-      setRooms(buildInitialRooms(readStorage(STORAGE_KEYS.rooms, INITIAL_ROOMS)));
-      setIsHydrating(false);
+      await finishHydration(
+        buildInitialUsers(readStorage(STORAGE_KEYS.users, DEMO_USERS)),
+        buildInitialNotes(readStorage(STORAGE_KEYS.notes, INITIAL_NOTES)),
+        buildInitialForumPosts(readStorage(STORAGE_KEYS.forum, INITIAL_FORUM_POSTS)),
+        buildInitialMessages(readStorage(STORAGE_KEYS.messages, INITIAL_MESSAGES)),
+        buildInitialNotifications(readStorage(STORAGE_KEYS.notifications, INITIAL_NOTIFICATIONS)),
+        buildInitialReports(readStorage(STORAGE_KEYS.reports, INITIAL_REPORTS)),
+        buildInitialRooms(readStorage(STORAGE_KEYS.rooms, INITIAL_ROOMS))
+      );
     });
 
     return () => {
       isActive = false;
+      if (progressTimer) {
+        window.clearInterval(progressTimer);
+      }
     };
   }, []);
 
@@ -670,6 +923,51 @@ function App() {
       return;
     }
 
+    if (!hasSkippedInitialSync.current.messages) {
+      hasSkippedInitialSync.current.messages = true;
+      return;
+    }
+
+    writeDbValue(DB_KEYS.messages, messages).catch(() => {
+      window.localStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(messages));
+    });
+  }, [isHydrating, messages]);
+
+  useEffect(() => {
+    if (isHydrating) {
+      return;
+    }
+
+    if (!hasSkippedInitialSync.current.notifications) {
+      hasSkippedInitialSync.current.notifications = true;
+      return;
+    }
+
+    writeDbValue(DB_KEYS.notifications, notifications).catch(() => {
+      window.localStorage.setItem(STORAGE_KEYS.notifications, JSON.stringify(notifications));
+    });
+  }, [isHydrating, notifications]);
+
+  useEffect(() => {
+    if (isHydrating) {
+      return;
+    }
+
+    if (!hasSkippedInitialSync.current.reports) {
+      hasSkippedInitialSync.current.reports = true;
+      return;
+    }
+
+    writeDbValue(DB_KEYS.reports, reports).catch(() => {
+      window.localStorage.setItem(STORAGE_KEYS.reports, JSON.stringify(reports));
+    });
+  }, [isHydrating, reports]);
+
+  useEffect(() => {
+    if (isHydrating) {
+      return;
+    }
+
     if (!hasSkippedInitialSync.current.rooms) {
       hasSkippedInitialSync.current.rooms = true;
       return;
@@ -692,6 +990,29 @@ function App() {
     window.localStorage.setItem(STORAGE_KEYS.theme, JSON.stringify(theme));
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      return;
+    }
+
+    const matchedUser = users.find((user) => user.id === currentUser.id);
+
+    if (!matchedUser) {
+      return;
+    }
+
+    const nextSessionUser = buildSessionUser(matchedUser);
+
+    if (JSON.stringify(nextSessionUser) !== JSON.stringify(currentUser)) {
+      setCurrentUser(nextSessionUser);
+    }
+  }, [currentUser, users]);
+
+  const currentUserRecord = useMemo(
+    () => users.find((user) => user.id === currentUser?.id) || null,
+    [currentUser, users]
+  );
 
   const publicNotes = useMemo(
     () => sortNewest(notes.filter((note) => note.status === 'approved' && !note.roomId)),
@@ -725,6 +1046,49 @@ function App() {
     [notes]
   );
 
+  const userNotifications = useMemo(() => {
+    if (!currentUser) {
+      return [];
+    }
+
+    return sortNewest(notifications.filter((notification) => notification.targetUserId === currentUser.id));
+  }, [currentUser, notifications]);
+
+  const adminInboxReports = useMemo(
+    () =>
+      sortNewest(reports.filter((report) => report.status === 'open')).map((report) => ({
+        id: `report-${report.id}`,
+        kind: 'report',
+        title: `Open report: ${report.targetTitle}`,
+        message: `Reported by ${report.reporterName}. ${report.reason}`,
+        createdAt: report.createdAt,
+        readAt: null,
+        link: '/admin'
+      })),
+    [reports]
+  );
+
+  const unreadNotificationCount = useMemo(
+    () => userNotifications.filter((notification) => !notification.readAt).length,
+    [userNotifications]
+  );
+
+  const openReportCount = useMemo(
+    () => reports.filter((report) => report.status === 'open').length,
+    [reports]
+  );
+
+  const navInboxCount = currentUser?.role === 'admin'
+    ? unreadNotificationCount + openReportCount
+    : unreadNotificationCount;
+
+  const inboxItems = currentUser?.role === 'admin'
+    ? sortNewest([
+        ...userNotifications.map((notification) => ({ ...notification, kind: 'notification' })),
+        ...adminInboxReports
+      ])
+    : userNotifications.map((notification) => ({ ...notification, kind: 'notification' }));
+
   const joinedRooms = useMemo(() => {
     if (!currentUser) {
       return [];
@@ -732,6 +1096,18 @@ function App() {
 
     return sortNewest(rooms.filter((room) => room.memberIds.includes(currentUser.id)));
   }, [currentUser, rooms]);
+
+  const directConversations = useMemo(
+    () =>
+      sortNewest(
+        messages.filter(
+          (message) =>
+            message.type === 'direct' &&
+            message.participants.includes(currentUser?.id)
+        )
+      ),
+    [currentUser?.id, messages]
+  );
 
   const editingNote = useMemo(
     () => notes.find((note) => note.id === editingNoteId) || null,
@@ -758,22 +1134,14 @@ function App() {
       };
     }
 
-    const sessionUser = {
-      id: matchedUser.id,
-      name: matchedUser.name,
-      email: matchedUser.email,
-      role: matchedUser.role,
-      bio: matchedUser.bio
-    };
-
-    setCurrentUser(sessionUser);
+    setCurrentUser(buildSessionUser(matchedUser));
     return {
       success: true,
       message: `Welcome back, ${matchedUser.name}.`
     };
   };
 
-  const handleRegister = ({ name, email, password }) => {
+  const handleRegister = ({ name, email, password, additionalInfo = {}, securityQuestion, securityAnswer }) => {
     const normalizedEmail = normalizeClassSyncEmail(email);
 
     if (!name.trim() || !normalizedEmail || !password.trim()) {
@@ -790,6 +1158,13 @@ function App() {
       };
     }
 
+    if (!securityQuestion?.trim() || !securityAnswer?.trim()) {
+      return {
+        success: false,
+        message: 'Please complete your security question and answer.'
+      };
+    }
+
     if (users.some((user) => user.email.toLowerCase() === normalizedEmail)) {
       return {
         success: false,
@@ -803,24 +1178,201 @@ function App() {
       email: normalizedEmail,
       password: password.trim(),
       role: 'student',
-      bio: 'New ClassSync member ready to share helpful notes.'
+      bio: additionalInfo.bio?.trim() || 'New ClassSync member ready to share helpful notes.',
+      course: additionalInfo.course?.trim() || '',
+      yearLevel: additionalInfo.yearLevel?.trim() || '',
+      profileVisibility: additionalInfo.profileVisibility || 'public',
+      securityQuestion: securityQuestion.trim(),
+      securityAnswer: securityAnswer.trim().toLowerCase(),
+      joinedAt: new Date().toISOString(),
+      profilePicture: additionalInfo.profilePicture || buildDefaultProfilePicture(name.trim(), 'student')
     };
 
-    setUsers((previousUsers) => [...previousUsers, newUser]);
-
-    const sessionUser = {
-      id: newUser.id,
-      name: newUser.name,
-      email: newUser.email,
-      role: newUser.role,
-      bio: newUser.bio
-    };
-
-    setCurrentUser(sessionUser);
+    setUsers((previousUsers) => [...previousUsers, normalizeUserRecord(newUser)]);
+    setCurrentUser(buildSessionUser(newUser));
 
     return {
       success: true,
       message: `Account created. Welcome to ClassSync, ${newUser.name}.`
+    };
+  };
+
+  const getRecoveryQuestion = (email) => {
+    const normalizedEmail = normalizeClassSyncEmail(email);
+    const matchedUser = users.find((user) => user.email.toLowerCase() === normalizedEmail);
+
+    if (!matchedUser) {
+      return {
+        success: false,
+        message: 'We could not find that ClassSync email.',
+        question: ''
+      };
+    }
+
+    return {
+      success: true,
+      message: 'Security question found.',
+      question: matchedUser.securityQuestion
+    };
+  };
+
+  const handleForgotPassword = ({ email, securityAnswer, newPassword }) => {
+    const normalizedEmail = normalizeClassSyncEmail(email);
+    const normalizedAnswer = securityAnswer.trim().toLowerCase();
+    const trimmedPassword = newPassword.trim();
+    const matchedUser = users.find((user) => user.email.toLowerCase() === normalizedEmail);
+
+    if (!matchedUser) {
+      return {
+        success: false,
+        message: 'We could not find that ClassSync email.'
+      };
+    }
+
+    if (!normalizedAnswer || matchedUser.securityAnswer !== normalizedAnswer) {
+      return {
+        success: false,
+        message: 'The security answer did not match our records.'
+      };
+    }
+
+    if (!trimmedPassword) {
+      return {
+        success: false,
+        message: 'Please enter a new password.'
+      };
+    }
+
+    setUsers((previousUsers) =>
+      previousUsers.map((user) =>
+        user.id === matchedUser.id
+          ? {
+              ...user,
+              password: trimmedPassword
+            }
+          : user
+      )
+    );
+
+    return {
+      success: true,
+      message: 'Your password has been updated. You can log in now.'
+    };
+  };
+
+  const handleUpdateProfile = (profileInput) => {
+    if (!currentUserRecord) {
+      return {
+        success: false,
+        message: 'Please log in again before updating your profile.'
+      };
+    }
+
+    const nextUser = normalizeUserRecord({
+      ...currentUserRecord,
+      name: profileInput.name?.trim() || currentUserRecord.name,
+      bio: profileInput.bio ?? currentUserRecord.bio,
+      course: profileInput.course ?? currentUserRecord.course,
+      yearLevel: profileInput.yearLevel ?? currentUserRecord.yearLevel,
+      profileVisibility: profileInput.profileVisibility || currentUserRecord.profileVisibility,
+      profilePicture: profileInput.profilePicture || currentUserRecord.profilePicture
+    });
+
+    setUsers((previousUsers) => previousUsers.map((user) => (user.id === nextUser.id ? nextUser : user)));
+    setNotes((previousNotes) =>
+      previousNotes.map((note) =>
+        note.uploaderId === nextUser.id
+          ? {
+              ...note,
+              uploaderName: nextUser.name
+            }
+          : note
+      )
+    );
+    setForumPosts((previousPosts) =>
+      previousPosts.map((post) => ({
+        ...post,
+        authorName: post.authorId === nextUser.id ? nextUser.name : post.authorName,
+        comments: (post.comments || []).map((comment) =>
+          comment.userId === nextUser.id
+            ? {
+                ...comment,
+                userName: nextUser.name
+              }
+          : comment
+        )
+      }))
+    );
+    setMessages((previousMessages) =>
+      previousMessages.map((message) =>
+        message.senderId === nextUser.id
+          ? {
+              ...message,
+              senderName: nextUser.name,
+              updatedAt: message.updatedAt || message.createdAt
+            }
+          : message
+      )
+    );
+    setCurrentUser(buildSessionUser(nextUser));
+
+    return {
+      success: true,
+      message: 'Your profile was updated.'
+    };
+  };
+
+  const handlePreviewProfilePicture = (profilePicture) => {
+    if (!currentUser) {
+      return;
+    }
+
+    setCurrentUser((previousUser) =>
+      previousUser
+        ? {
+            ...previousUser,
+            profilePicture
+          }
+        : previousUser
+    );
+  };
+
+  const handleChangePassword = ({ currentPassword, newPassword }) => {
+    if (!currentUserRecord) {
+      return {
+        success: false,
+        message: 'Please log in again before changing your password.'
+      };
+    }
+
+    if (currentUserRecord.password !== currentPassword) {
+      return {
+        success: false,
+        message: 'Your current password is incorrect.'
+      };
+    }
+
+    if (!newPassword.trim()) {
+      return {
+        success: false,
+        message: 'Please enter a new password.'
+      };
+    }
+
+    setUsers((previousUsers) =>
+      previousUsers.map((user) =>
+        user.id === currentUserRecord.id
+          ? {
+              ...user,
+              password: newPassword.trim()
+            }
+          : user
+      )
+    );
+
+    return {
+      success: true,
+      message: 'Your password was updated successfully.'
     };
   };
 
@@ -974,6 +1526,8 @@ function App() {
       return;
     }
 
+    const targetNote = notes.find((note) => note.id === noteId);
+
     setNotes((previousNotes) =>
       previousNotes.map((note) => {
         if (note.id !== noteId) {
@@ -987,9 +1541,19 @@ function App() {
           likes: alreadyLiked
             ? note.likes.filter((userId) => userId !== currentUser.id)
             : [...note.likes, currentUser.id]
-        };
+          };
       })
     );
+
+    if (targetNote && targetNote.uploaderId !== currentUser.id && !targetNote.likes.includes(currentUser.id)) {
+      createNotification({
+        targetUserId: targetNote.uploaderId,
+        title: 'Someone liked your note',
+        message: `${currentUser.name} liked "${targetNote.title}".`,
+        type: 'note-like',
+        link: targetNote.roomId ? `/rooms/${targetNote.roomId}/note/${targetNote.id}` : `/note/${targetNote.id}`
+      });
+    }
   };
 
   const handleSubmitReview = (noteId, reviewInput) => {
@@ -997,6 +1561,7 @@ function App() {
       return;
     }
 
+    const reviewedNote = notes.find((note) => note.id === noteId);
     const reviewPayload = {
       id: Date.now(),
       userId: currentUser.id,
@@ -1024,9 +1589,21 @@ function App() {
         };
       })
     );
+
+    if (reviewedNote && reviewedNote.uploaderId !== currentUser.id) {
+      createNotification({
+        targetUserId: reviewedNote.uploaderId,
+        title: 'New review on your note',
+        message: `${currentUser.name} reviewed "${reviewedNote.title}" with ${reviewInput.rating}/5 stars.`,
+        type: 'note-review',
+        link: reviewedNote.roomId ? `/rooms/${reviewedNote.roomId}/note/${reviewedNote.id}` : `/note/${reviewedNote.id}`
+      });
+    }
   };
 
   const handleApproveNote = (noteId) => {
+    const approvedNote = notes.find((note) => note.id === noteId);
+
     setNotes((previousNotes) =>
       previousNotes.map((note) =>
         note.id === noteId
@@ -1040,9 +1617,21 @@ function App() {
           : note
       )
     );
+
+    if (approvedNote && approvedNote.uploaderId !== currentUser?.id) {
+      createNotification({
+        targetUserId: approvedNote.uploaderId,
+        title: 'Your note was approved',
+        message: `"${approvedNote.title}" is now visible to other students.`,
+        type: 'note-approved',
+        link: approvedNote.roomId ? `/rooms/${approvedNote.roomId}/note/${approvedNote.id}` : `/note/${approvedNote.id}`
+      });
+    }
   };
 
   const handleRejectNote = (noteId, rejectionReason) => {
+    const rejectedNote = notes.find((note) => note.id === noteId);
+
     setNotes((previousNotes) =>
       previousNotes.map((note) =>
         note.id === noteId
@@ -1056,6 +1645,16 @@ function App() {
           : note
       )
     );
+
+    if (rejectedNote && rejectedNote.uploaderId !== currentUser?.id) {
+      createNotification({
+        targetUserId: rejectedNote.uploaderId,
+        title: 'Your note needs revision',
+        message: rejectionReason || `The admin requested changes for "${rejectedNote.title}".`,
+        type: 'note-rejected',
+        link: '/profile'
+      });
+    }
   };
 
   const requestApproveNote = (noteId) => {
@@ -1095,6 +1694,259 @@ function App() {
         closeModal();
       }
     });
+  };
+
+  const createNotification = ({ message, targetUserId, title, type = 'system', link = '' }) => {
+    if (!targetUserId) {
+      return;
+    }
+
+    const nextNotification = {
+      id: `notification-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      targetUserId,
+      title,
+      message,
+      type,
+      link,
+      createdAt: new Date().toISOString(),
+      readAt: null
+    };
+
+    setNotifications((previousNotifications) => [nextNotification, ...previousNotifications]);
+  };
+
+  const handleSendDirectMessage = (targetUserId, text) => {
+    if (!currentUser) {
+      return {
+        success: false,
+        message: 'Please log in before sending a message.'
+      };
+    }
+
+    const trimmedText = text.trim();
+    const targetUser = users.find((user) => user.id === targetUserId);
+
+    if (!trimmedText || !targetUser || targetUser.id === currentUser.id) {
+      return {
+        success: false,
+        message: 'Choose a valid recipient and enter a message first.'
+      };
+    }
+
+    const now = new Date().toISOString();
+    const participants = [currentUser.id, targetUser.id].sort();
+    const conversationKey = `direct:${participants.join(':')}`;
+    const nextMessage = {
+      id: `message-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      type: 'direct',
+      roomId: null,
+      participants,
+      conversationKey,
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      text: trimmedText,
+      createdAt: now,
+      updatedAt: now,
+      readBy: [currentUser.id]
+    };
+
+    setMessages((previousMessages) => [nextMessage, ...previousMessages]);
+    createNotification({
+      targetUserId: targetUser.id,
+      title: 'New direct message',
+      message: `${currentUser.name}: ${trimmedText.slice(0, 90)}`,
+      type: 'direct-message',
+      link: `/messages?user=${currentUser.id}`
+    });
+
+    return {
+      success: true,
+      message: 'Message sent.'
+    };
+  };
+
+  const handleSendRoomMessage = (roomId, text) => {
+    if (!currentUser) {
+      return {
+        success: false,
+        message: 'Please log in before sending a room message.'
+      };
+    }
+
+    const trimmedText = text.trim();
+    const room = rooms.find((item) => item.id === roomId);
+
+    if (!trimmedText || !room || !room.memberIds.includes(currentUser.id)) {
+      return {
+        success: false,
+        message: 'Only room members can send messages here.'
+      };
+    }
+
+    const now = new Date().toISOString();
+    const nextMessage = {
+      id: `message-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      type: 'room',
+      roomId,
+      participants: [...room.memberIds],
+      conversationKey: `room:${roomId}`,
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      text: trimmedText,
+      createdAt: now,
+      updatedAt: now,
+      readBy: [currentUser.id]
+    };
+
+    setMessages((previousMessages) => [nextMessage, ...previousMessages]);
+
+    return {
+      success: true,
+      message: 'Room message sent.'
+    };
+  };
+
+  const handleMarkConversationRead = (conversationKey) => {
+    if (!currentUser) {
+      return;
+    }
+
+    setMessages((previousMessages) =>
+      previousMessages.map((message) =>
+        message.conversationKey === conversationKey && !message.readBy.includes(currentUser.id)
+          ? {
+              ...message,
+              readBy: [...message.readBy, currentUser.id],
+              updatedAt: message.updatedAt || message.createdAt
+            }
+          : message
+      )
+    );
+  };
+
+  const handleMarkRoomMessagesRead = (roomId) => {
+    handleMarkConversationRead(`room:${roomId}`);
+  };
+
+  const createAnnouncementNotifications = ({ audience, message, targetUserId = '', title }) => {
+    const targets =
+      audience === 'all'
+        ? users.filter((user) => user.id !== currentUser?.id)
+        : users.filter((user) => user.id === targetUserId);
+
+    if (targets.length === 0) {
+      return {
+        success: false,
+        message: 'No matching users were found for this announcement.'
+      };
+    }
+
+    const createdAt = new Date().toISOString();
+    const announcementNotifications = targets.map((user, index) => ({
+      id: `notification-${Date.now()}-${index}-${user.id}`,
+      targetUserId: user.id,
+      title,
+      message,
+      type: 'announcement',
+      link: '/notifications',
+      createdAt,
+      readAt: null
+    }));
+
+    setNotifications((previousNotifications) => [...announcementNotifications, ...previousNotifications]);
+
+    return {
+      success: true,
+      message: audience === 'all' ? 'Announcement sent to all users.' : 'Announcement sent successfully.'
+    };
+  };
+
+  const handleMarkNotificationRead = (notificationId) => {
+    setNotifications((previousNotifications) =>
+      previousNotifications.map((notification) =>
+        notification.id === notificationId && !notification.readAt
+          ? {
+              ...notification,
+              readAt: new Date().toISOString()
+            }
+          : notification
+      )
+    );
+  };
+
+  const handleMarkAllNotificationsRead = () => {
+    setNotifications((previousNotifications) =>
+      previousNotifications.map((notification) =>
+        notification.targetUserId === currentUser?.id && !notification.readAt
+          ? {
+              ...notification,
+              readAt: new Date().toISOString()
+            }
+          : notification
+      )
+    );
+  };
+
+  const handleCreateReport = ({ targetId, targetType, targetTitle, roomId = null, reason }) => {
+    if (!currentUser) {
+      return;
+    }
+
+    const nextReport = {
+      id: `report-${Date.now()}`,
+      targetId: String(targetId),
+      targetType,
+      targetTitle,
+      roomId,
+      reason,
+      reporterId: currentUser.id,
+      reporterName: currentUser.name,
+      createdAt: new Date().toISOString(),
+      status: 'open'
+    };
+
+    setReports((previousReports) => [nextReport, ...previousReports]);
+  };
+
+  const requestReportItem = ({ targetId, targetType, targetTitle, roomId = null }) => {
+    if (!currentUser) {
+      return;
+    }
+
+    openModal({
+      variant: 'danger',
+      title: `Report this ${targetType === 'forum-post' ? 'forum post' : 'note'}?`,
+      message: `Tell the admin what is wrong with "${targetTitle}".`,
+      confirmLabel: 'Submit report',
+      requireComment: true,
+      commentLabel: 'Report reason',
+      commentPlaceholder: 'Example: Spam, inappropriate content, copied material, or misleading information.',
+      onConfirm: (comment) => {
+        handleCreateReport({
+          targetId,
+          targetType,
+          targetTitle,
+          roomId,
+          reason: comment
+        });
+        closeModal();
+      }
+    });
+  };
+
+  const handleResolveReport = (reportId) => {
+    setReports((previousReports) =>
+      previousReports.map((report) =>
+        report.id === reportId
+          ? {
+              ...report,
+              status: 'resolved',
+              resolvedAt: new Date().toISOString(),
+              resolvedByName: currentUser?.name || 'Admin'
+            }
+          : report
+      )
+    );
   };
 
   const handleCreateForumPost = (postInput, options = {}) => {
@@ -1181,6 +2033,7 @@ function App() {
       return;
     }
 
+    const commentedPost = forumPosts.find((post) => post.id === postId);
     const newComment = {
       id: Date.now(),
       userId: currentUser.id,
@@ -1194,6 +2047,16 @@ function App() {
         post.id === postId ? { ...post, comments: [...post.comments, newComment] } : post
       )
     );
+
+    if (commentedPost && commentedPost.authorId !== currentUser.id) {
+      createNotification({
+        targetUserId: commentedPost.authorId,
+        title: 'New comment on your forum post',
+        message: `${currentUser.name} commented on "${commentedPost.title}".`,
+        type: 'forum-comment',
+        link: commentedPost.roomId ? `/rooms/${commentedPost.roomId}` : '/forum'
+      });
+    }
   };
 
   const buildRoomLink = (room) => {
@@ -1348,6 +2211,10 @@ function App() {
               ? 'Preparing notes, rooms, forum posts, and shared accounts from the Supabase database.'
               : 'Preparing notes, rooms, forum posts, and saved accounts from the local database.'}
           </p>
+          <div className="app-loading-progress" aria-label="Loading progress">
+            <div className="app-loading-progress-bar" style={{ width: `${hydrationProgress}%` }} />
+          </div>
+          <small>{hydrationProgress}% completed</small>
         </div>
       </div>
     );
@@ -1363,8 +2230,11 @@ function App() {
               <LoginPage
                 onLogin={handleLogin}
                 onRegister={handleRegister}
+                onForgotPassword={handleForgotPassword}
+                onGetRecoveryQuestion={getRecoveryQuestion}
                 theme={theme}
                 onToggleTheme={toggleTheme}
+                securityQuestions={SECURITY_QUESTIONS}
               />
             }
           />
@@ -1393,6 +2263,7 @@ function App() {
         theme={theme}
         onToggleTheme={toggleTheme}
         pendingCount={pendingNotes.length}
+        inboxCount={navInboxCount}
       />
 
       <main className="main">
@@ -1415,10 +2286,23 @@ function App() {
             element={
               <BrowsePage
                 notes={publicNotes}
+                users={users}
                 currentUser={currentUser}
                 onToggleLike={handleToggleLike}
                 onDelete={requestDeleteNote}
                 onEdit={startEditingNote}
+              />
+            }
+          />
+          <Route
+            path="/messages"
+            element={
+              <MessagesPage
+                currentUser={currentUser}
+                users={users}
+                messages={messages}
+                onSendDirectMessage={handleSendDirectMessage}
+                onMarkConversationRead={handleMarkConversationRead}
               />
             }
           />
@@ -1439,11 +2323,13 @@ function App() {
             element={
               <NoteDetailsPage
                 notes={visibleNotes}
+                users={users}
                 currentUser={currentUser}
                 onToggleLike={handleToggleLike}
                 onDelete={requestDeleteNote}
                 onEdit={startEditingNote}
                 onSubmitReview={handleSubmitReview}
+                onReport={requestReportItem}
               />
             }
           />
@@ -1452,10 +2338,41 @@ function App() {
             element={
               <ProfilePage
                 notes={userNotes}
+                users={users}
                 currentUser={currentUser}
                 onToggleLike={handleToggleLike}
                 onDelete={requestDeleteNote}
                 onEdit={startEditingNote}
+                onUpdateProfile={handleUpdateProfile}
+                onPreviewProfilePicture={handlePreviewProfilePicture}
+                onChangePassword={handleChangePassword}
+              />
+            }
+          />
+          <Route
+            path="/users/:userId"
+            element={
+              <ProfilePage
+                notes={publicNotes}
+                users={users}
+                currentUser={currentUser}
+                onToggleLike={handleToggleLike}
+                onDelete={requestDeleteNote}
+                onEdit={startEditingNote}
+                onUpdateProfile={handleUpdateProfile}
+                onPreviewProfilePicture={handlePreviewProfilePicture}
+                onChangePassword={handleChangePassword}
+              />
+            }
+          />
+          <Route
+            path="/notifications"
+            element={
+              <NotificationsPage
+                currentUser={currentUser}
+                items={inboxItems}
+                onMarkRead={handleMarkNotificationRead}
+                onMarkAllRead={handleMarkAllNotificationsRead}
               />
             }
           />
@@ -1468,6 +2385,7 @@ function App() {
                 onCreatePost={handleCreateForumPost}
                 onVote={handleVoteForumPost}
                 onComment={handleCommentOnPost}
+                onReport={requestReportItem}
               />
             }
           />
@@ -1492,13 +2410,17 @@ function App() {
                 rooms={rooms}
                 roomNotes={sortNewest(notes.filter((note) => note.roomId))}
                 roomPosts={normalizeForumPosts(forumPosts).filter((post) => post.roomId)}
+                roomMessages={messages.filter((message) => message.type === 'room')}
                 editingNote={editingNote}
                 onEdit={startEditingNote}
                 onCancelEdit={cancelEditingNote}
                 onSubmitRoomNote={handleSubmitRoomNote}
                 onCreateRoomPost={handleCreateRoomPost}
+                onSendRoomMessage={handleSendRoomMessage}
+                onMarkRoomMessagesRead={handleMarkRoomMessagesRead}
                 onVotePost={handleVoteForumPost}
                 onCommentPost={handleCommentOnPost}
+                onReportPost={requestReportItem}
                 onToggleLike={handleToggleLike}
                 onDeleteNote={requestDeleteNote}
                 onJoinRoom={handleJoinRoom}
@@ -1514,11 +2436,13 @@ function App() {
               <RoomNoteDetailsPage
                 notes={notes.filter((note) => note.roomId)}
                 rooms={rooms}
+                users={users}
                 currentUser={currentUser}
                 onToggleLike={handleToggleLike}
                 onDelete={requestDeleteNote}
                 onEdit={startEditingNote}
                 onSubmitReview={handleSubmitReview}
+                onReport={requestReportItem}
               />
             }
           />
@@ -1529,9 +2453,13 @@ function App() {
                 <AdminPage
                   pendingNotes={pendingNotes}
                   allNotes={sortNewest(notes.filter((note) => !note.roomId))}
+                  reports={sortNewest(reports)}
+                  users={users}
                   onApprove={requestApproveNote}
                   onReject={requestRejectNote}
                   onDelete={requestDeleteNote}
+                  onResolveReport={handleResolveReport}
+                  onCreateAnnouncement={createAnnouncementNotifications}
                 />
               ) : (
                 <Navigate to="/" replace />

@@ -13,7 +13,7 @@ const SearchBar = ({ onSearch }) => {
     <div className="search-container">
       <input
         type="text"
-        placeholder="Search notes by title, subject, or keyword"
+        placeholder="Search notes or users by title, subject, keyword, or name"
         value={query}
         onChange={handleChange}
         className="search-input"

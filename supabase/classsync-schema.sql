@@ -27,7 +27,28 @@ create table if not exists public.classsync_forum_posts (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.classsync_messages (
+  id text primary key,
+  payload jsonb not null,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 create table if not exists public.classsync_rooms (
+  id text primary key,
+  payload jsonb not null,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.classsync_reports (
+  id text primary key,
+  payload jsonb not null,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+create table if not exists public.classsync_notifications (
   id text primary key,
   payload jsonb not null,
   created_at timestamptz not null default timezone('utc', now()),
@@ -37,13 +58,19 @@ create table if not exists public.classsync_rooms (
 create index if not exists classsync_users_updated_at_idx on public.classsync_users (updated_at desc);
 create index if not exists classsync_notes_updated_at_idx on public.classsync_notes (updated_at desc);
 create index if not exists classsync_forum_posts_updated_at_idx on public.classsync_forum_posts (updated_at desc);
+create index if not exists classsync_messages_updated_at_idx on public.classsync_messages (updated_at desc);
 create index if not exists classsync_rooms_updated_at_idx on public.classsync_rooms (updated_at desc);
+create index if not exists classsync_reports_updated_at_idx on public.classsync_reports (updated_at desc);
+create index if not exists classsync_notifications_updated_at_idx on public.classsync_notifications (updated_at desc);
 
 alter table public.app_state enable row level security;
 alter table public.classsync_users enable row level security;
 alter table public.classsync_notes enable row level security;
 alter table public.classsync_forum_posts enable row level security;
+alter table public.classsync_messages enable row level security;
 alter table public.classsync_rooms enable row level security;
+alter table public.classsync_reports enable row level security;
+alter table public.classsync_notifications enable row level security;
 
 drop policy if exists "App state is readable by everyone" on public.app_state;
 create policy "App state is readable by everyone"
@@ -139,6 +166,31 @@ on public.classsync_forum_posts
 for delete
 using (true);
 
+drop policy if exists "ClassSync messages are readable by everyone" on public.classsync_messages;
+create policy "ClassSync messages are readable by everyone"
+on public.classsync_messages
+for select
+using (true);
+
+drop policy if exists "ClassSync messages can be inserted by everyone" on public.classsync_messages;
+create policy "ClassSync messages can be inserted by everyone"
+on public.classsync_messages
+for insert
+with check (true);
+
+drop policy if exists "ClassSync messages can be updated by everyone" on public.classsync_messages;
+create policy "ClassSync messages can be updated by everyone"
+on public.classsync_messages
+for update
+using (true)
+with check (true);
+
+drop policy if exists "ClassSync messages can be deleted by everyone" on public.classsync_messages;
+create policy "ClassSync messages can be deleted by everyone"
+on public.classsync_messages
+for delete
+using (true);
+
 drop policy if exists "ClassSync rooms are readable by everyone" on public.classsync_rooms;
 create policy "ClassSync rooms are readable by everyone"
 on public.classsync_rooms
@@ -161,6 +213,56 @@ with check (true);
 drop policy if exists "ClassSync rooms can be deleted by everyone" on public.classsync_rooms;
 create policy "ClassSync rooms can be deleted by everyone"
 on public.classsync_rooms
+for delete
+using (true);
+
+drop policy if exists "ClassSync reports are readable by everyone" on public.classsync_reports;
+create policy "ClassSync reports are readable by everyone"
+on public.classsync_reports
+for select
+using (true);
+
+drop policy if exists "ClassSync reports can be inserted by everyone" on public.classsync_reports;
+create policy "ClassSync reports can be inserted by everyone"
+on public.classsync_reports
+for insert
+with check (true);
+
+drop policy if exists "ClassSync reports can be updated by everyone" on public.classsync_reports;
+create policy "ClassSync reports can be updated by everyone"
+on public.classsync_reports
+for update
+using (true)
+with check (true);
+
+drop policy if exists "ClassSync reports can be deleted by everyone" on public.classsync_reports;
+create policy "ClassSync reports can be deleted by everyone"
+on public.classsync_reports
+for delete
+using (true);
+
+drop policy if exists "ClassSync notifications are readable by everyone" on public.classsync_notifications;
+create policy "ClassSync notifications are readable by everyone"
+on public.classsync_notifications
+for select
+using (true);
+
+drop policy if exists "ClassSync notifications can be inserted by everyone" on public.classsync_notifications;
+create policy "ClassSync notifications can be inserted by everyone"
+on public.classsync_notifications
+for insert
+with check (true);
+
+drop policy if exists "ClassSync notifications can be updated by everyone" on public.classsync_notifications;
+create policy "ClassSync notifications can be updated by everyone"
+on public.classsync_notifications
+for update
+using (true)
+with check (true);
+
+drop policy if exists "ClassSync notifications can be deleted by everyone" on public.classsync_notifications;
+create policy "ClassSync notifications can be deleted by everyone"
+on public.classsync_notifications
 for delete
 using (true);
 
@@ -208,6 +310,21 @@ set
   payload = excluded.payload,
   created_at = least(public.classsync_forum_posts.created_at, excluded.created_at),
   updated_at = greatest(public.classsync_forum_posts.updated_at, excluded.updated_at);
+
+insert into public.classsync_messages (id, payload, created_at, updated_at)
+select
+  coalesce(item ->> 'id', gen_random_uuid()::text) as id,
+  item as payload,
+  coalesce((item ->> 'createdAt')::timestamptz, timezone('utc', now())) as created_at,
+  coalesce((item ->> 'updatedAt')::timestamptz, (item ->> 'createdAt')::timestamptz, timezone('utc', now())) as updated_at
+from public.app_state legacy,
+  lateral jsonb_array_elements(legacy.value) as item
+where legacy.key = 'messages'
+on conflict (id) do update
+set
+  payload = excluded.payload,
+  created_at = least(public.classsync_messages.created_at, excluded.created_at),
+  updated_at = greatest(public.classsync_messages.updated_at, excluded.updated_at);
 
 insert into public.classsync_rooms (id, payload, created_at, updated_at)
 select

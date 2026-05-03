@@ -10,12 +10,23 @@ const backgroundNotes = [
   { className: 'auth-note-five', x: 0.16, y: 0.06, color: 'rgba(91, 116, 214, 0.58)' },
   { className: 'auth-note-six', x: -0.08, y: 0.15, color: 'rgba(240, 139, 168, 0.56)' },
   { className: 'auth-note-seven', x: 0.1, y: -0.16, color: 'rgba(123, 99, 210, 0.54)' },
-  { className: 'auth-note-eight', x: -0.15, y: 0.12, color: 'rgba(125, 145, 230, 0.58)' },
-  { className: 'auth-note-nine', x: 0.09, y: 0.18, color: 'rgba(91, 116, 214, 0.5)' },
-  { className: 'auth-note-ten', x: -0.1, y: -0.14, color: 'rgba(240, 139, 168, 0.52)' },
-  { className: 'auth-note-eleven', x: 0.14, y: -0.06, color: 'rgba(123, 99, 210, 0.5)' },
-  { className: 'auth-note-twelve', x: -0.12, y: 0.16, color: 'rgba(125, 145, 230, 0.54)' }
+  { className: 'auth-note-eight', x: -0.15, y: 0.12, color: 'rgba(125, 145, 230, 0.58)' }
 ];
+
+const getEmailPrefix = (value) => value.replace(/@classsync\.com$/i, '').replace(/\s+/g, '');
+
+const BookGlyph = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path
+      d="M6 4.5h9.5a2.5 2.5 0 0 1 2.5 2.5v11.5H8.2A2.2 2.2 0 0 0 6 20.7V4.5Zm0 0A2.5 2.5 0 0 0 3.5 7v10.5A2.5 2.5 0 0 0 6 20h12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
 
 const EyeIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -45,7 +56,30 @@ const EyeClosedIcon = () => (
   </svg>
 );
 
-const LoginPage = ({ onLogin, onRegister, theme, onToggleTheme }) => {
+const EmailField = ({ id, label, value, onChange, placeholder = 'username' }) => (
+  <div className="form-group">
+    <label htmlFor={id}>{label}</label>
+    <div className="email-shortcut-field">
+      <input
+        id={id}
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(getEmailPrefix(event.target.value))}
+      />
+      <span>@classsync.com</span>
+    </div>
+  </div>
+);
+
+const LoginPage = ({
+  onLogin,
+  onRegister,
+  onForgotPassword,
+  onGetRecoveryQuestion,
+  theme,
+  onToggleTheme,
+  securityQuestions
+}) => {
   const [mode, setMode] = useState('login');
   const [credentials, setCredentials] = useState({
     email: '',
@@ -54,11 +88,27 @@ const LoginPage = ({ onLogin, onRegister, theme, onToggleTheme }) => {
   const [registerForm, setRegisterForm] = useState({
     name: '',
     email: '',
-    password: ''
+    password: '',
+    securityQuestion: securityQuestions[0] || '',
+    securityAnswer: '',
+    additionalInfo: {
+      bio: '',
+      course: '',
+      yearLevel: '',
+      profileVisibility: 'public'
+    }
+  });
+  const [forgotPasswordForm, setForgotPasswordForm] = useState({
+    email: '',
+    securityAnswer: '',
+    newPassword: ''
   });
   const [feedback, setFeedback] = useState('');
+  const [recoveryQuestion, setRecoveryQuestion] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [showAdditionalInfo, setShowAdditionalInfo] = useState(false);
   const shellRef = useRef(null);
   const cardRef = useRef(null);
   const panelsRef = useRef(null);
@@ -138,7 +188,7 @@ const LoginPage = ({ onLogin, onRegister, theme, onToggleTheme }) => {
     return () => {
       resizeObserver.disconnect();
     };
-  }, [mode, feedback, registerForm.password, credentials.password]);
+  }, [mode, feedback, registerForm, credentials, showForgotPassword, showAdditionalInfo, forgotPasswordForm, recoveryQuestion]);
 
   const handleLoginSubmit = (event) => {
     event.preventDefault();
@@ -150,6 +200,29 @@ const LoginPage = ({ onLogin, onRegister, theme, onToggleTheme }) => {
     event.preventDefault();
     const result = onRegister(registerForm);
     setFeedback(result.message);
+  };
+
+  const handleFindQuestion = () => {
+    const result = onGetRecoveryQuestion(forgotPasswordForm.email);
+    setRecoveryQuestion(result.question || '');
+    setFeedback(result.message);
+  };
+
+  const handleForgotPasswordSubmit = (event) => {
+    event?.preventDefault?.();
+    const result = onForgotPassword(forgotPasswordForm);
+    setFeedback(result.message);
+
+    if (result.success) {
+      setShowForgotPassword(false);
+      setForgotPasswordForm({
+        email: '',
+        securityAnswer: '',
+        newPassword: ''
+      });
+      setRecoveryQuestion('');
+      setMode('login');
+    }
   };
 
   return (
@@ -172,7 +245,10 @@ const LoginPage = ({ onLogin, onRegister, theme, onToggleTheme }) => {
               '--note-color': note.color
             }}
           >
-            <span className="auth-note">🕮</span>
+            <span className="auth-note auth-note-desktop">📘</span>
+            <span className="auth-note auth-note-mobile">
+              <BookGlyph />
+            </span>
           </span>
         ))}
       </div>
@@ -186,6 +262,17 @@ const LoginPage = ({ onLogin, onRegister, theme, onToggleTheme }) => {
             Students can upload notes and join discussions. Admin accounts review submissions
             before they become visible to everyone.
           </p>
+          <div className="auth-copy-books" aria-hidden="true">
+            <span className="auth-copy-book auth-copy-book-one">
+              <BookGlyph />
+            </span>
+            <span className="auth-copy-book auth-copy-book-two">
+              <BookGlyph />
+            </span>
+            <span className="auth-copy-book auth-copy-book-three">
+              <BookGlyph />
+            </span>
+          </div>
         </div>
 
         <div className="auth-panel-shell">
@@ -216,15 +303,12 @@ const LoginPage = ({ onLogin, onRegister, theme, onToggleTheme }) => {
               aria-hidden={mode !== 'login'}
             >
               <div className="auth-form-body">
-                <div className="form-group">
-                  <label htmlFor="login-email">Email</label>
-                  <input
-                    id="login-email"
-                    value={credentials.email}
-                    placeholder="name@classsync.com"
-                    onChange={(event) => setCredentials((current) => ({ ...current, email: event.target.value }))}
-                  />
-                </div>
+                <EmailField
+                  id="login-email"
+                  label="ClassSync email"
+                  value={credentials.email}
+                  onChange={(value) => setCredentials((current) => ({ ...current, email: value }))}
+                />
 
                 <div className="form-group">
                   <label htmlFor="login-password">Password</label>
@@ -254,6 +338,66 @@ const LoginPage = ({ onLogin, onRegister, theme, onToggleTheme }) => {
               <div className="auth-form-actions">
                 <button type="submit" className="auth-submit-button">Login</button>
               </div>
+              <button
+                type="button"
+                className="auth-inline-link"
+                onClick={() => {
+                  setShowForgotPassword((current) => !current);
+                  setFeedback('');
+                }}
+              >
+                Forgot password?
+              </button>
+
+              {showForgotPassword && (
+                <div className="auth-recovery-box">
+                  <h3>Recover password</h3>
+                  <p>Use your ClassSync email and personal answer to set a new password.</p>
+                  <div className="auth-recovery-form">
+                    <EmailField
+                      id="recover-email"
+                      label="ClassSync email"
+                      value={forgotPasswordForm.email}
+                      onChange={(value) => setForgotPasswordForm((current) => ({ ...current, email: value }))}
+                    />
+                    <button type="button" className="recovery-secondary-button" onClick={handleFindQuestion}>
+                      Show my question
+                    </button>
+                    {recoveryQuestion && (
+                      <div className="auth-recovery-question">
+                        <strong>{recoveryQuestion}</strong>
+                      </div>
+                    )}
+                    <div className="form-group">
+                      <label htmlFor="recover-answer">Answer</label>
+                      <input
+                        id="recover-answer"
+                        value={forgotPasswordForm.securityAnswer}
+                        onChange={(event) =>
+                          setForgotPasswordForm((current) => ({ ...current, securityAnswer: event.target.value }))
+                        }
+                        placeholder="Type your answer"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label htmlFor="recover-new-password">New password</label>
+                      <input
+                        id="recover-new-password"
+                        type="password"
+                        value={forgotPasswordForm.newPassword}
+                        onChange={(event) =>
+                          setForgotPasswordForm((current) => ({ ...current, newPassword: event.target.value }))
+                        }
+                        placeholder="Create a new password"
+                      />
+                    </div>
+                    <button type="button" className="auth-submit-button" onClick={handleForgotPasswordSubmit}>
+                      Reset password
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {feedback && mode === 'login' && <p className="auth-feedback">{feedback}</p>}
             </form>
 
@@ -275,15 +419,12 @@ const LoginPage = ({ onLogin, onRegister, theme, onToggleTheme }) => {
                   />
                 </div>
 
-                <div className="form-group">
-                  <label htmlFor="register-email">Email</label>
-                  <input
-                    id="register-email"
-                    value={registerForm.email}
-                    placeholder="name@classsync.com"
-                    onChange={(event) => setRegisterForm((current) => ({ ...current, email: event.target.value }))}
-                  />
-                </div>
+                <EmailField
+                  id="register-email"
+                  label="ClassSync email"
+                  value={registerForm.email}
+                  onChange={(value) => setRegisterForm((current) => ({ ...current, email: value }))}
+                />
 
                 <div className="form-group">
                   <label htmlFor="register-password">Password</label>
@@ -308,6 +449,107 @@ const LoginPage = ({ onLogin, onRegister, theme, onToggleTheme }) => {
                     )}
                   </div>
                 </div>
+
+                <div className="form-group">
+                  <label htmlFor="register-security-question">Personal recovery question</label>
+                  <select
+                    id="register-security-question"
+                    value={registerForm.securityQuestion}
+                    onChange={(event) =>
+                      setRegisterForm((current) => ({ ...current, securityQuestion: event.target.value }))
+                    }
+                  >
+                    {securityQuestions.map((question) => (
+                      <option key={question} value={question}>
+                        {question}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="register-security-answer">Your answer</label>
+                  <input
+                    id="register-security-answer"
+                    value={registerForm.securityAnswer}
+                    onChange={(event) =>
+                      setRegisterForm((current) => ({ ...current, securityAnswer: event.target.value }))
+                    }
+                    placeholder="Only you should know this answer"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  className="auth-inline-link"
+                  onClick={() => setShowAdditionalInfo((current) => !current)}
+                >
+                  {showAdditionalInfo ? 'Hide additional information' : 'Add optional profile details'}
+                </button>
+
+                {showAdditionalInfo && (
+                  <div className="auth-extra-grid">
+                    <div className="form-group">
+                      <label htmlFor="register-course">Course</label>
+                      <input
+                        id="register-course"
+                        value={registerForm.additionalInfo.course}
+                        onChange={(event) =>
+                          setRegisterForm((current) => ({
+                            ...current,
+                            additionalInfo: { ...current.additionalInfo, course: event.target.value }
+                          }))
+                        }
+                        placeholder="Example: BSIT"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label htmlFor="register-year-level">Year level</label>
+                      <input
+                        id="register-year-level"
+                        value={registerForm.additionalInfo.yearLevel}
+                        onChange={(event) =>
+                          setRegisterForm((current) => ({
+                            ...current,
+                            additionalInfo: { ...current.additionalInfo, yearLevel: event.target.value }
+                          }))
+                        }
+                        placeholder="Example: 2nd Year"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label htmlFor="register-bio">Short bio</label>
+                      <textarea
+                        id="register-bio"
+                        rows="3"
+                        value={registerForm.additionalInfo.bio}
+                        onChange={(event) =>
+                          setRegisterForm((current) => ({
+                            ...current,
+                            additionalInfo: { ...current.additionalInfo, bio: event.target.value }
+                          }))
+                        }
+                        placeholder="Tell classmates a bit about you"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label htmlFor="register-visibility">Profile visibility</label>
+                      <select
+                        id="register-visibility"
+                        value={registerForm.additionalInfo.profileVisibility}
+                        onChange={(event) =>
+                          setRegisterForm((current) => ({
+                            ...current,
+                            additionalInfo: { ...current.additionalInfo, profileVisibility: event.target.value }
+                          }))
+                        }
+                      >
+                        <option value="public">Public profile</option>
+                        <option value="private">Private profile</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="auth-form-actions">
@@ -322,7 +564,6 @@ const LoginPage = ({ onLogin, onRegister, theme, onToggleTheme }) => {
             <div className="demo-credential-card">
               <strong>For student</strong>
               <p>Email: student@classsync.com</p>
-              <p>Password: student123</p>
             </div>
             <div className="recovery-entry-card">
               <strong>Missing old data?</strong>

@@ -40,6 +40,7 @@ const readFileAsDataUrl = (file) =>
         name: file.name,
         type: file.type || 'application/octet-stream',
         size: file.size,
+        attachedAt: new Date().toISOString(),
         url: reader.result,
         isImage: file.type.startsWith('image/')
       });
