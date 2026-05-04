@@ -398,6 +398,7 @@ const ClassBlocksGame = ({ player, leaderboard, onRecordScore, onExit }) => {
   const [pendingScore, setPendingScore] = useState(null);
   const [isScoreSaved, setIsScoreSaved] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showMessageDetails, setShowMessageDetails] = useState(false);
   const draggedPiece = pieces.find((piece) => piece.id === draggedPieceId);
   const isComboActive = comboNumber >= 3;
   const sortedLeaderboard = sortClassBlocksLeaderboard(leaderboard);
@@ -563,7 +564,6 @@ const ClassBlocksGame = ({ player, leaderboard, onRecordScore, onExit }) => {
     }
 
     event.preventDefault();
-    const pieceRect = event.currentTarget.getBoundingClientRect();
     const boardCell = document.querySelector('.classblocks-cell');
     const boardElement = document.querySelector('.classblocks-board');
     const boardStyles = boardElement ? window.getComputedStyle(boardElement) : null;
@@ -572,15 +572,38 @@ const ClassBlocksGame = ({ player, leaderboard, onRecordScore, onExit }) => {
     const gapSize = Number.parseFloat(boardStyles?.columnGap || boardStyles?.gap || '4') || 4;
     const previewWidth = footprint.width * cellSize + Math.max(0, footprint.width - 1) * gapSize;
     const previewHeight = footprint.height * cellSize + Math.max(0, footprint.height - 1) * gapSize;
-    const grabRatioX = pieceRect.width ? (event.clientX - pieceRect.left) / pieceRect.width : 0.5;
-    const grabRatioY = pieceRect.height ? (event.clientY - pieceRect.top) / pieceRect.height : 0.5;
+    const pieceDots = Array.from(event.currentTarget.querySelectorAll('.classblocks-piece-dot'));
+    const grabbedDot = pieceDots
+      .map((dot) => ({ dot, rect: dot.getBoundingClientRect() }))
+      .find(
+        ({ rect }) =>
+          event.clientX >= rect.left &&
+          event.clientX <= rect.right &&
+          event.clientY >= rect.top &&
+          event.clientY <= rect.bottom
+      );
+    const grabbedDotIndex = grabbedDot ? Array.from(event.currentTarget.children).indexOf(grabbedDot.dot) : -1;
+    const grabbedCellX = grabbedDotIndex >= 0 ? grabbedDotIndex % footprint.width : Math.floor(footprint.width / 2);
+    const grabbedCellY = grabbedDotIndex >= 0 ? Math.floor(grabbedDotIndex / footprint.width) : Math.floor(footprint.height / 2);
+    const grabbedDotProgressX = grabbedDot
+      ? Math.min(1, Math.max(0, (event.clientX - grabbedDot.rect.left) / Math.max(1, grabbedDot.rect.width)))
+      : 0.5;
+    const grabbedDotProgressY = grabbedDot
+      ? Math.min(1, Math.max(0, (event.clientY - grabbedDot.rect.top) / Math.max(1, grabbedDot.rect.height)))
+      : 0.5;
 
     event.currentTarget.setPointerCapture?.(event.pointerId);
     setDraggedPieceId(piece.id);
     setDragPosition({ x: event.clientX, y: event.clientY });
     setDragOffset({
-      x: grabRatioX * previewWidth,
-      y: grabRatioY * previewHeight
+      x:
+        grabbedDotIndex >= 0
+          ? grabbedCellX * (cellSize + gapSize) + grabbedDotProgressX * cellSize
+          : previewWidth / 2,
+      y:
+        grabbedDotIndex >= 0
+          ? grabbedCellY * (cellSize + gapSize) + grabbedDotProgressY * cellSize
+          : previewHeight / 2
     });
     setDragPreviewMetrics({ cellSize, gapSize });
     setMessage('Drop the piece onto the board.');
@@ -796,7 +819,21 @@ const ClassBlocksGame = ({ player, leaderboard, onRecordScore, onExit }) => {
           </button>
         </div>
       </div>
-      <p className="classblocks-message">{message}</p>
+      <button
+        type="button"
+        className="classblocks-message"
+        title={message}
+        aria-label={`Game status: ${message}`}
+        aria-expanded={showMessageDetails}
+        onBlur={() => setShowMessageDetails(false)}
+        onClick={() => setShowMessageDetails((current) => !current)}
+        onMouseEnter={() => setShowMessageDetails(true)}
+        onMouseLeave={() => setShowMessageDetails(false)}
+      >
+        <span>{message}</span>
+      </button>
+
+      {showMessageDetails && <div className="classblocks-message-popover">{message}</div>}
 
       <div className="classblocks-board" aria-label="ClassBlocks board">
         {board.map((row, rowIndex) =>
