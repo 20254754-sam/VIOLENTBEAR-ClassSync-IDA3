@@ -1,6 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import ForumVoteControls from '../components/ForumVoteControls';
+import {
+  appendMention,
+  findMentionedUsers,
+  getMentionSuggestions,
+  splitTextByMentions
+} from '../lib/mentions';
 
 const ReportIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -20,6 +26,17 @@ const formatDate = (dateValue) =>
     day: 'numeric',
     year: 'numeric'
   });
+
+const MentionText = ({ text }) =>
+  splitTextByMentions(text).map((part, index) =>
+    part.startsWith('@') ? (
+      <span key={`${part}-${index}`} className="mention-highlight">
+        {part}
+      </span>
+    ) : (
+      <React.Fragment key={`${part}-${index}`}>{part}</React.Fragment>
+    )
+  );
 
 const RoomDetailsPage = ({
   currentUser,
@@ -54,6 +71,7 @@ const RoomDetailsPage = ({
     tag: 'Discussion'
   });
   const [commentDrafts, setCommentDrafts] = useState({});
+  const [replyTargets, setReplyTargets] = useState({});
   const [showComposer, setShowComposer] = useState(Boolean(editingNote?.roomId === roomId));
   const [showMembersPanel, setShowMembersPanel] = useState(false);
   const room = rooms.find((item) => item.id === roomId);
@@ -95,6 +113,7 @@ const RoomDetailsPage = ({
   const isMember = room?.memberIds.includes(currentUser.id);
   const isRoomAdmin = room?.adminIds?.includes(currentUser.id) || room?.ownerId === currentUser.id;
   const isComposerVisible = showComposer || Boolean(roomEditingNote);
+  const mentionUsers = members.filter((member) => member.id !== currentUser.id);
 
   if (!room) {
     return (
@@ -157,8 +176,61 @@ const RoomDetailsPage = ({
     setFeedback('Your room post is now visible to members of this classroom.');
   };
 
+  const submitRoomComment = (postId) => {
+    const text = (commentDrafts[postId] || '').trim();
+
+    if (!text) {
+      return;
+    }
+
+    onCommentPost(postId, text, {
+      parentId: replyTargets[postId]?.id || null,
+      mentions: findMentionedUsers(text, mentionUsers)
+    });
+    setCommentDrafts((currentDrafts) => ({
+      ...currentDrafts,
+      [postId]: ''
+    }));
+    setReplyTargets((currentTargets) => ({
+      ...currentTargets,
+      [postId]: null
+    }));
+  };
+
+  const renderRoomComment = (post, comment, commentsByParent, depth = 0) => {
+    const replies = commentsByParent.get(comment.id) || [];
+
+    return (
+      <div key={comment.id} className={`forum-comment ${depth > 0 ? 'forum-comment-reply' : ''}`}>
+        <div className="forum-comment-header">
+          <strong>{comment.userName}</strong>
+          <button
+            type="button"
+            className="forum-reply-button"
+            onClick={() =>
+              setReplyTargets((currentTargets) => ({
+                ...currentTargets,
+                [post.id]: comment
+              }))
+            }
+          >
+            Reply
+          </button>
+        </div>
+        <p>
+          <MentionText text={comment.text} />
+        </p>
+        {replies.length > 0 && (
+          <div className="forum-comment-replies">
+            {replies.map((reply) => renderRoomComment(post, reply, commentsByParent, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <div className="page">
+    <div className="page room-details-page">
       <div className="room-hero">
         <div className="room-hero-copy">
           <span className="dashboard-strip-label">Private classroom</span>
@@ -403,18 +475,45 @@ const RoomDetailsPage = ({
                       <p>{post.body}</p>
 
                       <div className="forum-comment-list">
-                        {post.comments.map((comment) => (
-                          <div key={comment.id} className="forum-comment">
-                            <strong>{comment.userName}</strong>
-                            <p>{comment.text}</p>
+                        {post.comments.length > 0 ? (
+                          (() => {
+                            const commentsByParent = post.comments.reduce((groups, comment) => {
+                              const parentKey = comment.parentId || 'root';
+                              groups.set(parentKey, [...(groups.get(parentKey) || []), comment]);
+                              return groups;
+                            }, new Map());
+
+                            return (commentsByParent.get('root') || []).map((comment) =>
+                              renderRoomComment(post, comment, commentsByParent)
+                            );
+                          })()
+                        ) : (
+                          <div className="forum-comment forum-comment-empty">
+                            <p>No comments yet. Start the room thread.</p>
                           </div>
-                        ))}
+                        )}
                       </div>
                       <div className="forum-comment-form">
+                        {replyTargets[post.id] && (
+                          <div className="forum-comment-replying">
+                            Replying to {replyTargets[post.id].userName}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setReplyTargets((currentTargets) => ({
+                                  ...currentTargets,
+                                  [post.id]: null
+                                }))
+                              }
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
                         <textarea
                           rows="2"
                           value={commentDrafts[post.id] || ''}
-                          placeholder={`Reply as ${currentUser.name}`}
+                          placeholder={`Reply as ${currentUser.name}. Type @ to mention a member.`}
                           onChange={(event) =>
                             setCommentDrafts((currentDrafts) => ({
                               ...currentDrafts,
@@ -422,21 +521,30 @@ const RoomDetailsPage = ({
                             }))
                           }
                         />
+                        {getMentionSuggestions(commentDrafts[post.id] || '', mentionUsers).length > 0 && (
+                          <div className="mention-suggestions" aria-label="Mention suggestions">
+                            {getMentionSuggestions(commentDrafts[post.id] || '', mentionUsers).map((user) => (
+                              <button
+                                key={user.id}
+                                type="button"
+                                className="mention-suggestion-button"
+                                onClick={() =>
+                                  setCommentDrafts((currentDrafts) => ({
+                                    ...currentDrafts,
+                                    [post.id]: appendMention(currentDrafts[post.id] || '', user)
+                                  }))
+                                }
+                              >
+                                @{user.name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         <button
                           type="button"
-                          onClick={() => {
-                            const text = (commentDrafts[post.id] || '').trim();
-                            if (!text) {
-                              return;
-                            }
-                            onCommentPost(post.id, text);
-                            setCommentDrafts((currentDrafts) => ({
-                              ...currentDrafts,
-                              [post.id]: ''
-                            }));
-                          }}
+                          onClick={() => submitRoomComment(post.id)}
                         >
-                          Comment
+                          {replyTargets[post.id] ? 'Reply' : 'Comment'}
                         </button>
                       </div>
                     </div>
@@ -453,6 +561,7 @@ const RoomDetailsPage = ({
 
           <RoomChatPanel
             room={room}
+            members={members}
             currentUser={currentUser}
             messages={roomMessages}
             onSendRoomMessage={onSendRoomMessage}

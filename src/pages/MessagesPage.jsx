@@ -31,6 +31,27 @@ const formatConversationTime = (dateValue) => {
 const buildConversationKey = (firstUserId, secondUserId) =>
   `direct:${[firstUserId, secondUserId].map(String).sort().join(':')}`;
 
+const getCompactDisplayName = (name = '') => {
+  const normalizedName = name.trim() || 'User';
+  return normalizedName.length > 10 ? `${normalizedName.slice(0, 10)}...` : normalizedName;
+};
+
+const formatVoiceDuration = (duration = 0) => {
+  const safeDuration = Math.max(0, Math.round(duration));
+  const minutes = Math.floor(safeDuration / 60);
+  const seconds = String(safeDuration % 60).padStart(2, '0');
+
+  return `${minutes}:${seconds}`;
+};
+
+const getMessagePreview = (message) => {
+  if (!message) {
+    return 'No messages yet. Start a new conversation.';
+  }
+
+  return message.voice ? 'Voice note' : message.text || 'Message';
+};
+
 const MessagesPage = ({
   currentUser,
   users,
@@ -44,8 +65,19 @@ const MessagesPage = ({
   const [activeUserId, setActiveUserId] = useState(routeUserId);
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState('');
+  const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
+  const [voiceDraft, setVoiceDraft] = useState(null);
+  const [voiceError, setVoiceError] = useState('');
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const selectedUserId = activeUserId;
   const threadRef = React.useRef(null);
+  const syncedRouteUserRef = React.useRef(routeUserId);
+  const mediaRecorderRef = React.useRef(null);
+  const audioChunksRef = React.useRef([]);
+  const voiceTimerRef = React.useRef(null);
+  const voiceStreamRef = React.useRef(null);
+  const voiceDurationRef = React.useRef(0);
 
   const directContacts = useMemo(
     () => users.filter((user) => user.id !== currentUser.id),
@@ -146,22 +178,13 @@ const MessagesPage = ({
   }, [conversationSummaries, currentUser.id, selectedUserId, users]);
 
   useEffect(() => {
-    if (!routeUserId || routeUserId === activeUserId) {
+    if (routeUserId === syncedRouteUserRef.current) {
       return;
     }
 
+    syncedRouteUserRef.current = routeUserId;
     setActiveUserId(routeUserId);
-  }, [activeUserId, routeUserId]);
-
-  useEffect(() => {
-    if (selectedUserId || conversationSummaries.length === 0) {
-      return;
-    }
-
-    const firstConversationUserId = conversationSummaries[0].otherUser.id;
-    setActiveUserId(firstConversationUserId);
-    setSearchParams({ user: firstConversationUserId }, { replace: true });
-  }, [conversationSummaries, selectedUserId, setSearchParams]);
+  }, [routeUserId]);
 
   const selectedUser = useMemo(
     () => users.find((user) => user.id === selectedUserId) || null,
@@ -207,6 +230,33 @@ const MessagesPage = ({
     threadRef.current.scrollTop = threadRef.current.scrollHeight;
   }, [activeMessages]);
 
+  useEffect(() => {
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+
+    setIsActionMenuOpen(false);
+    setVoiceDraft(null);
+    setVoiceError('');
+    setRecordingSeconds(0);
+    voiceDurationRef.current = 0;
+  }, [selectedUserId]);
+
+  useEffect(
+    () => () => {
+      if (voiceTimerRef.current) {
+        window.clearInterval(voiceTimerRef.current);
+      }
+
+      if (mediaRecorderRef.current?.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
+
+      voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+    },
+    []
+  );
+
   const handleSubmit = (event) => {
     event.preventDefault();
 
@@ -221,12 +271,140 @@ const MessagesPage = ({
     }
   };
 
+  const stopVoiceRecording = () => {
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+  };
+
+  const handleStartVoiceRecording = async () => {
+    if (!selectedUser || isRecordingVoice) {
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setVoiceError('Voice recording is not supported in this browser.');
+      return;
+    }
+
+    try {
+      setVoiceError('');
+      setVoiceDraft(null);
+      setRecordingSeconds(0);
+      voiceDurationRef.current = 0;
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+
+      voiceStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data?.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        if (voiceTimerRef.current) {
+          window.clearInterval(voiceTimerRef.current);
+          voiceTimerRef.current = null;
+        }
+
+        stream.getTracks().forEach((track) => track.stop());
+        voiceStreamRef.current = null;
+        setIsRecordingVoice(false);
+
+        const blob = new Blob(audioChunksRef.current, {
+          type: recorder.mimeType || 'audio/webm'
+        });
+
+        if (!blob.size) {
+          setVoiceError('No voice was captured. Please try again.');
+          return;
+        }
+
+        if (blob.size > 1_500_000) {
+          setVoiceError('Voice note is too large. Please keep it under about one minute.');
+          return;
+        }
+
+        const reader = new FileReader();
+
+        reader.onloadend = () => {
+          setVoiceDraft({
+            dataUrl: reader.result,
+            duration: voiceDurationRef.current,
+            mimeType: blob.type,
+            size: blob.size
+          });
+        };
+
+        reader.readAsDataURL(blob);
+      };
+
+      recorder.start();
+      setIsRecordingVoice(true);
+
+      voiceTimerRef.current = window.setInterval(() => {
+        setRecordingSeconds((seconds) => {
+          const nextSeconds = seconds + 1;
+          voiceDurationRef.current = nextSeconds;
+
+          if (nextSeconds >= 60) {
+            stopVoiceRecording();
+          }
+
+          return nextSeconds;
+        });
+      }, 1000);
+    } catch {
+      setIsRecordingVoice(false);
+      setVoiceError('Microphone access was blocked or unavailable.');
+      voiceStreamRef.current?.getTracks().forEach((track) => track.stop());
+      voiceStreamRef.current = null;
+    }
+  };
+
+  const handleCancelVoiceDraft = () => {
+    setVoiceDraft(null);
+    setVoiceError('');
+    setRecordingSeconds(0);
+    voiceDurationRef.current = 0;
+  };
+
+  const handleSendVoiceDraft = () => {
+    if (!selectedUser || !voiceDraft) {
+      return;
+    }
+
+    const result = onSendDirectMessage(selectedUser.id, '', { voice: voiceDraft });
+
+    if (result.success) {
+      handleCancelVoiceDraft();
+    } else {
+      setVoiceError(result.message);
+    }
+  };
+
   const unreadConversationCount = conversationSummaries.filter((summary) => summary.unreadCount > 0).length;
 
   const handleSelectUser = (userId) => {
     setQuery('');
     setDraft('');
+
+    if (selectedUserId === userId) {
+      syncedRouteUserRef.current = '';
+      setActiveUserId('');
+      setIsActionMenuOpen(false);
+      setSearchParams({}, { replace: false });
+      return;
+    }
+
+    syncedRouteUserRef.current = userId;
     setActiveUserId(userId);
+    setIsActionMenuOpen(false);
     setSearchParams({ user: userId }, { replace: false });
   };
 
@@ -245,9 +423,147 @@ const MessagesPage = ({
 
     if (result.success) {
       setDraft('');
+      syncedRouteUserRef.current = '';
       setActiveUserId('');
       setSearchParams({}, { replace: true });
     }
+  };
+
+  const renderConversationPanel = () => {
+    if (!selectedUser) {
+      return null;
+    }
+
+    const selectedCompactName = getCompactDisplayName(selectedUser.name);
+
+    return (
+      <section className="messages-panel messages-panel-inline">
+        <div className="messages-panel-header">
+          <div className="messages-panel-user">
+            <UserAvatar user={selectedUser} size="md" />
+            <div>
+              <strong title={selectedUser.name}>{selectedCompactName}</strong>
+              <p>{selectedUser.role === 'admin' ? 'Admin' : selectedUser.course || 'Student'}</p>
+            </div>
+          </div>
+          <div className="messages-panel-actions">
+            <div className="messages-panel-meta">
+              <span>{activeMessages.length} msg</span>
+              <span>{selectedConversationSummary?.unreadCount || 0} unread</span>
+            </div>
+            <div className="messages-action-menu">
+              <button
+                type="button"
+                className="messages-action-menu-button"
+                aria-label="Open conversation actions"
+                aria-expanded={isActionMenuOpen}
+                onClick={() => setIsActionMenuOpen((current) => !current)}
+              >
+                <span />
+                <span />
+                <span />
+              </button>
+              {isActionMenuOpen && (
+                <div className="messages-panel-button-row">
+                  <Link to={`/users/${selectedUser.id}`} className="card-link-button" onClick={() => setIsActionMenuOpen(false)}>
+                    View profile
+                  </Link>
+                  <button
+                    type="button"
+                    className="messages-delete-button"
+                    onClick={handleDeleteConversation}
+                    disabled={activeMessages.length === 0}
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="messages-thread" ref={threadRef}>
+          {activeMessages.length > 0 ? (
+            activeMessages.map((message) => {
+              const isOwnMessage = message.senderId === currentUser.id;
+
+              return (
+                <article
+                  key={message.id}
+                  className={`message-bubble ${isOwnMessage ? 'message-bubble-own' : 'message-bubble-other'}`}
+                >
+                  {message.text && <p>{message.text}</p>}
+                  {message.voice && (
+                    <div className="message-voice-note">
+                      <div className="message-voice-note-icon" aria-hidden="true">
+                        <span />
+                      </div>
+                      <div className="message-voice-note-body">
+                        <strong>Voice note</strong>
+                        <audio controls src={message.voice.dataUrl}>
+                          Your browser does not support audio playback.
+                        </audio>
+                      </div>
+                      <span className="message-voice-note-duration">
+                        {formatVoiceDuration(message.voice.duration)}
+                      </span>
+                    </div>
+                  )}
+                  <small>{formatMessageTime(message.createdAt)}</small>
+                </article>
+              );
+            })
+          ) : (
+            <div className="profile-empty-state messages-empty-thread">
+              <h3>No messages yet</h3>
+              <p>Send the first private message to start this conversation.</p>
+            </div>
+          )}
+        </div>
+
+        <form className="messages-composer" onSubmit={handleSubmit}>
+          <textarea
+            rows="3"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder={`Message ${selectedCompactName}`}
+          />
+          <div className="messages-voice-tools">
+            {voiceDraft && (
+              <div className="messages-voice-preview">
+                <audio controls src={voiceDraft.dataUrl}>
+                  Your browser does not support audio playback.
+                </audio>
+                <span>{formatVoiceDuration(voiceDraft.duration)}</span>
+                <button type="button" onClick={handleSendVoiceDraft}>Send voice</button>
+                <button type="button" className="messages-voice-cancel" onClick={handleCancelVoiceDraft}>
+                  Cancel
+                </button>
+              </div>
+            )}
+            {voiceError && <p className="messages-voice-error">{voiceError}</p>}
+          </div>
+          <div className="messages-composer-footer">
+            <small>Private messages are only visible to you and {selectedCompactName}.</small>
+            <div className="messages-composer-actions">
+              <button
+                type="button"
+                className={`messages-voice-button ${isRecordingVoice ? 'messages-voice-button-recording' : ''}`}
+                onClick={isRecordingVoice ? stopVoiceRecording : handleStartVoiceRecording}
+                disabled={!selectedUser}
+                aria-label={isRecordingVoice ? 'Stop recording voice note' : 'Record voice note'}
+              >
+                <span aria-hidden="true" className="messages-voice-icon" />
+                <span className="messages-voice-button-label">
+                  {isRecordingVoice ? `Stop ${formatVoiceDuration(recordingSeconds)}` : 'Record voice'}
+                </span>
+              </button>
+              <button type="submit" disabled={!draft.trim()}>Send message</button>
+            </div>
+          </div>
+        </form>
+      </section>
+    );
   };
 
   return (
@@ -280,53 +596,6 @@ const MessagesPage = ({
 
           <div className="messages-list-section">
             <div className="messages-list-section-header">
-              <strong>Recent conversations</strong>
-            </div>
-            {recentConversationItems.length > 0 ? (
-              <div className="messages-contact-list">
-                {recentConversationItems.map((summary) => {
-                  const isSelected = selectedUserId === summary.otherUser.id;
-
-                  return (
-                    <button
-                      key={summary.conversationKey}
-                      type="button"
-                      className={`messages-contact-card ${isSelected ? 'messages-contact-card-active' : ''}`}
-                      onClick={() => handleSelectUser(summary.otherUser.id)}
-                    >
-                      <UserAvatar user={summary.otherUser} size="md" />
-                      <div className="messages-contact-copy">
-                        <div className="messages-contact-topline">
-                          <strong>{summary.otherUser.name}</strong>
-                          <small className="messages-contact-stamp">
-                            {summary.lastMessage
-                              ? formatConversationTime(summary.lastMessage.createdAt)
-                              : 'New'}
-                          </small>
-                        </div>
-                        <p>{summary.lastMessage?.text || 'No messages yet. Start a new conversation.'}</p>
-                        <small>
-                          {summary.otherUser.role === 'admin'
-                            ? 'Admin'
-                            : summary.otherUser.course || 'Student'}
-                        </small>
-                      </div>
-                      {summary.unreadCount > 0 && (
-                        <span className="messages-unread-badge">{summary.unreadCount}</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="messages-search-empty">
-                <p>No conversations yet.</p>
-              </div>
-            )}
-          </div>
-
-          <div className="messages-list-section">
-            <div className="messages-list-section-header">
               <strong>Start a new chat</strong>
             </div>
             {query.trim() ? (
@@ -336,22 +605,24 @@ const MessagesPage = ({
                     const isSelected = selectedUserId === user.id;
 
                     return (
-                      <button
-                        key={user.id}
-                        type="button"
-                        className={`messages-contact-card ${isSelected ? 'messages-contact-card-active' : ''}`}
-                        onClick={() => handleSelectUser(user.id)}
-                      >
-                        <UserAvatar user={user} size="md" />
-                        <div className="messages-contact-copy">
-                          <div className="messages-contact-topline">
-                            <strong>{user.name}</strong>
-                            <small className="messages-contact-stamp">Search</small>
+                      <React.Fragment key={user.id}>
+                        <button
+                          type="button"
+                          className={`messages-contact-card ${isSelected ? 'messages-contact-card-active' : ''}`}
+                          onClick={() => handleSelectUser(user.id)}
+                        >
+                          <UserAvatar user={user} size="md" />
+                          <div className="messages-contact-copy">
+                            <div className="messages-contact-topline">
+                              <strong>{user.name}</strong>
+                              <small className="messages-contact-stamp">Search</small>
+                            </div>
+                            <p>{user.role === 'admin' ? 'Admin' : user.course || 'Student'}</p>
+                            <small>{user.email}</small>
                           </div>
-                          <p>{user.role === 'admin' ? 'Admin' : user.course || 'Student'}</p>
-                          <small>{user.email}</small>
-                        </div>
-                      </button>
+                        </button>
+                        {isSelected && renderConversationPanel()}
+                      </React.Fragment>
                     );
                   })}
                 </div>
@@ -366,81 +637,57 @@ const MessagesPage = ({
               </div>
             )}
           </div>
+
+          <div className="messages-list-section">
+            <div className="messages-list-section-header">
+              <strong>Recent conversations</strong>
+            </div>
+            {recentConversationItems.length > 0 ? (
+              <div className="messages-contact-list">
+                {recentConversationItems.map((summary) => {
+                  const isSelected = selectedUserId === summary.otherUser.id;
+
+                  return (
+                    <React.Fragment key={summary.conversationKey}>
+                      <button
+                        type="button"
+                        className={`messages-contact-card ${isSelected ? 'messages-contact-card-active' : ''}`}
+                        onClick={() => handleSelectUser(summary.otherUser.id)}
+                      >
+                        <UserAvatar user={summary.otherUser} size="md" />
+                        <div className="messages-contact-copy">
+                          <div className="messages-contact-topline">
+                            <strong>{summary.otherUser.name}</strong>
+                            <small className="messages-contact-stamp">
+                              {summary.lastMessage
+                                ? formatConversationTime(summary.lastMessage.createdAt)
+                                : 'New'}
+                            </small>
+                          </div>
+                          <p>{getMessagePreview(summary.lastMessage)}</p>
+                          <small>
+                            {summary.otherUser.role === 'admin'
+                              ? 'Admin'
+                              : summary.otherUser.course || 'Student'}
+                          </small>
+                        </div>
+                        {summary.unreadCount > 0 && (
+                          <span className="messages-unread-badge">{summary.unreadCount}</span>
+                        )}
+                      </button>
+                      {isSelected && renderConversationPanel()}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="messages-search-empty">
+                <p>No conversations yet.</p>
+              </div>
+            )}
+          </div>
         </aside>
 
-        <section className="messages-panel">
-          {selectedUser ? (
-            <>
-              <div className="messages-panel-header">
-                <div className="messages-panel-user">
-                  <UserAvatar user={selectedUser} size="md" />
-                  <div>
-                    <strong>{selectedUser.name}</strong>
-                    <p>{selectedUser.role === 'admin' ? 'Admin' : selectedUser.course || 'Student'}</p>
-                  </div>
-                </div>
-                <div className="messages-panel-actions">
-                  <div className="messages-panel-meta">
-                    <span>{activeMessages.length} message{activeMessages.length === 1 ? '' : 's'}</span>
-                    <span>{selectedConversationSummary?.unreadCount || 0} unread</span>
-                  </div>
-                  <Link to={`/users/${selectedUser.id}`} className="card-link-button">
-                    View profile
-                  </Link>
-                  <button
-                    type="button"
-                    className="messages-delete-button"
-                    onClick={handleDeleteConversation}
-                    disabled={activeMessages.length === 0}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-
-              <div className="messages-thread" ref={threadRef}>
-                {activeMessages.length > 0 ? (
-                  activeMessages.map((message) => {
-                    const isOwnMessage = message.senderId === currentUser.id;
-
-                    return (
-                      <article
-                        key={message.id}
-                        className={`message-bubble ${isOwnMessage ? 'message-bubble-own' : 'message-bubble-other'}`}
-                      >
-                        <p>{message.text}</p>
-                        <small>{formatMessageTime(message.createdAt)}</small>
-                      </article>
-                    );
-                  })
-                ) : (
-                  <div className="profile-empty-state messages-empty-thread">
-                    <h3>No messages yet</h3>
-                    <p>Send the first private message to start this conversation.</p>
-                  </div>
-                )}
-              </div>
-
-              <form className="messages-composer" onSubmit={handleSubmit}>
-                <textarea
-                  rows="3"
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  placeholder={`Message ${selectedUser.name}`}
-                />
-                <div className="messages-composer-footer">
-                  <small>Private messages are only visible to you and {selectedUser.name}.</small>
-                  <button type="submit">Send message</button>
-                </div>
-              </form>
-            </>
-          ) : (
-            <div className="profile-empty-state messages-empty-thread">
-              <h3>Select a conversation</h3>
-              <p>Choose a classmate from the left to start chatting.</p>
-            </div>
-          )}
-        </section>
       </div>
     </div>
   );

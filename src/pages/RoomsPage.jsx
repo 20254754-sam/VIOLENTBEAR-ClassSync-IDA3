@@ -59,7 +59,7 @@ const RoomsPage = ({ currentUser, rooms, onCreateRoom, onJoinRoom, getRoomLink }
   };
 
   return (
-    <div className="page">
+    <div className="page classrooms-page">
       <h1>Classrooms</h1>
       <div className="upload-subtitle">
         <p>Create a room for your class or join one with a shared invite.</p>

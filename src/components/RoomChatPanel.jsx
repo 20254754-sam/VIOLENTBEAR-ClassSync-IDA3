@@ -1,4 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import {
+  appendMention,
+  findMentionedUsers,
+  getMentionSuggestions,
+  splitTextByMentions
+} from '../lib/mentions';
 
 const formatMessageTime = (dateValue) =>
   new Date(dateValue).toLocaleString('en-US', {
@@ -8,9 +14,25 @@ const formatMessageTime = (dateValue) =>
     minute: '2-digit'
   });
 
-const RoomChatPanel = ({ room, currentUser, messages, onSendRoomMessage, onMarkRoomMessagesRead }) => {
+const MentionText = ({ text }) =>
+  splitTextByMentions(text).map((part, index) =>
+    part.startsWith('@') ? (
+      <span key={`${part}-${index}`} className="mention-highlight">
+        {part}
+      </span>
+    ) : (
+      <React.Fragment key={`${part}-${index}`}>{part}</React.Fragment>
+    )
+  );
+
+const RoomChatPanel = ({ room, members = [], currentUser, messages, onSendRoomMessage, onMarkRoomMessagesRead }) => {
   const [draft, setDraft] = useState('');
   const threadRef = React.useRef(null);
+  const mentionUsers = useMemo(
+    () => members.filter((member) => member.id !== currentUser.id),
+    [currentUser.id, members]
+  );
+  const mentionSuggestions = getMentionSuggestions(draft, mentionUsers);
 
   const roomMessages = useMemo(
     () =>
@@ -35,7 +57,9 @@ const RoomChatPanel = ({ room, currentUser, messages, onSendRoomMessage, onMarkR
   const handleSubmit = (event) => {
     event.preventDefault();
 
-    const result = onSendRoomMessage(room.id, draft);
+    const result = onSendRoomMessage(room.id, draft, {
+      mentions: findMentionedUsers(draft, mentionUsers)
+    });
 
     if (result.success) {
       setDraft('');
@@ -72,7 +96,9 @@ const RoomChatPanel = ({ room, currentUser, messages, onSendRoomMessage, onMarkR
                   className={`message-bubble ${isOwnMessage ? 'message-bubble-own' : 'message-bubble-other'}`}
                 >
                   <strong>{isOwnMessage ? 'You' : message.senderName}</strong>
-                  <p>{message.text}</p>
+                  <p>
+                    <MentionText text={message.text} />
+                  </p>
                   <small>{formatMessageTime(message.createdAt)}</small>
                 </article>
               );
@@ -90,8 +116,22 @@ const RoomChatPanel = ({ room, currentUser, messages, onSendRoomMessage, onMarkR
             rows="3"
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
-            placeholder={`Message everyone in ${room.name}`}
+            placeholder={`Message everyone in ${room.name}. Type @ to mention.`}
           />
+          {mentionSuggestions.length > 0 && (
+            <div className="mention-suggestions room-mention-suggestions" aria-label="Mention suggestions">
+              {mentionSuggestions.map((user) => (
+                <button
+                  key={user.id}
+                  type="button"
+                  className="mention-suggestion-button"
+                  onClick={() => setDraft((currentDraft) => appendMention(currentDraft, user))}
+                >
+                  @{user.name}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="messages-composer-footer">
             <small>Everyone currently inside this room can read the messages sent here.</small>
             <button type="submit">Send to room</button>

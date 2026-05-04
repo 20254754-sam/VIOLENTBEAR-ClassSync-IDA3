@@ -12,6 +12,49 @@ const ReportIcon = () => (
   </svg>
 );
 
+const DetailActionIcon = ({ type }) => {
+  const paths = {
+    like: (
+      <path
+        d="M12 20.2 5.4 13.9a4.1 4.1 0 0 1-.25-5.75 3.7 3.7 0 0 1 5.45.08L12 9.7l1.4-1.47a3.7 3.7 0 0 1 5.45-.08 4.1 4.1 0 0 1-.25 5.75z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+    ),
+    edit: (
+      <path
+        d="m4.5 16.8-.5 3.2 3.2-.5L18.8 7.9a2.1 2.1 0 0 0-3-3zM14.6 6.1l3.3 3.3"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+    ),
+    delete: (
+      <path
+        d="M5.5 7h13M9 7V5.4A1.4 1.4 0 0 1 10.4 4h3.2A1.4 1.4 0 0 1 15 5.4V7m2.1 0-.7 12a1.6 1.6 0 0 1-1.6 1.5H9.2a1.6 1.6 0 0 1-1.6-1.5L6.9 7m3.1 3.2v6.2m4-6.2v6.2"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+    )
+  };
+
+  return (
+    <span aria-hidden="true" className="detail-action-icon">
+      <svg viewBox="0 0 24 24" focusable="false">
+        {paths[type]}
+      </svg>
+    </span>
+  );
+};
+
 const formatDate = (dateValue) =>
   new Date(dateValue).toLocaleDateString('en-US', {
     month: 'short',
@@ -31,7 +74,8 @@ const NoteDetailsPage = ({ notes, users, currentUser, onToggleLike, onDelete, on
   const isUploader = note && currentUser && note.uploaderId === currentUser.id;
   const liked = note && currentUser ? note.likes.includes(currentUser.id) : false;
   const uploader = users.find((user) => user.id === note?.uploaderId) || null;
-  const backTo = location.state?.from || '/browse';
+  const storedBackRoute = sessionStorage.getItem('classsync-note-return-route');
+  const backTo = location.state?.from || storedBackRoute || '/browse';
 
   const averageRating = useMemo(() => {
     if (!note || note.reviews.length === 0) {
@@ -69,7 +113,10 @@ const NoteDetailsPage = ({ notes, users, currentUser, onToggleLike, onDelete, on
   return (
     <div className="page">
       <div className="note-header">
-        <Link to={backTo} className="back-btn-small">Back</Link>
+        <Link to={backTo} className="back-btn-small" aria-label="Back">
+          <span aria-hidden="true" className="back-btn-icon" />
+          <span className="back-btn-label">Back</span>
+        </Link>
         <div className="note-title-info">
           <div className="note-badge-row">
             <div className="note-badge-row-copy">
@@ -115,34 +162,41 @@ const NoteDetailsPage = ({ notes, users, currentUser, onToggleLike, onDelete, on
       <div className="detail-toolbar">
         <button
           type="button"
-          className={`card-action-button ${liked ? 'card-action-button-active' : ''}`}
+          className={`card-action-button detail-icon-button ${liked ? 'card-action-button-active' : ''}`}
           onClick={() => onToggleLike(note.id)}
+          aria-label={`${liked ? 'Unlike' : 'Like'} note`}
         >
-          {liked ? 'Unlike' : 'Like'} {note.likes.length}
+          <DetailActionIcon type="like" />
+          <span className="detail-action-label">{liked ? 'Unlike' : 'Like'}</span>
+          <span className="detail-action-count">{note.likes.length}</span>
         </button>
         {isUploader && (
           <button
             type="button"
-            className="card-link-button"
+            className="card-link-button detail-icon-button"
             onClick={() => {
               onEdit(note.id);
               navigate('/upload');
             }}
+            aria-label="Edit note"
           >
-            Edit note
+            <DetailActionIcon type="edit" />
+            <span className="detail-action-label">Edit note</span>
           </button>
         )}
         {(isUploader || currentUser.role === 'admin') && (
           <button
             type="button"
-            className="card-link-button card-link-button-danger"
+            className="card-link-button card-link-button-danger detail-icon-button"
             onClick={() =>
               onDelete(note.id, {
                 onSuccess: () => navigate(currentUser.role === 'admin' ? '/admin' : '/profile')
               })
             }
+            aria-label="Delete note"
           >
-            Delete note
+            <DetailActionIcon type="delete" />
+            <span className="detail-action-label">Delete note</span>
           </button>
         )}
       </div>

@@ -3,7 +3,7 @@ import UploadForm from '../components/UploadForm';
 
 const UploadPage = ({ notes, currentUser, editingNote, onSubmit, onCancelEdit }) => {
   return (
-    <div className="page">
+    <div className="page upload-page">
       <h1>{editingNote ? 'Update Note' : 'Upload New Note'}</h1>
       <div className="upload-subtitle">
         <p>{editingNote ? 'Refine your note before resubmitting it' : 'Share your class notes with other students'}</p>

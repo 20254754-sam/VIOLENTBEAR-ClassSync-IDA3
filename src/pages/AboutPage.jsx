@@ -3,9 +3,9 @@ import { Link } from 'react-router-dom';
 
 const AboutPage = () => {
   return (
-    <div className="page">
+    <div className="page about-page">
       <section className="hero about-hero">
-        <h1>ⓘ About ClassSync</h1>
+        <h1>About ClassSync</h1>
         <p>
           ClassSync is a student-friendly space for sharing notes, reviewing lessons,
           and keeping academic resources organized in one place.

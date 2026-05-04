@@ -7,7 +7,7 @@ const HomePage = ({ notes, currentUser, onToggleLike, onDelete, onEdit }) => {
   const recentNotes = notes.slice(0, 3);
 
   return (
-    <div className="page">
+    <div className="page home-page">
       <section className="hero">
         <div className="hero-logo-wrap">
           <BrandLogo size="hero" showWordmark={false} />
@@ -54,7 +54,7 @@ const HomePage = ({ notes, currentUser, onToggleLike, onDelete, onEdit }) => {
         </div>
       </div>
 
-      <section>
+      <section className="home-recent-notes">
         <h2>Recent Approved Notes</h2>
         {recentNotes.length > 0 ? (
           <NoteList

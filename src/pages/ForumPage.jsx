@@ -1,5 +1,11 @@
 import React, { useState } from 'react';
 import ForumVoteControls from '../components/ForumVoteControls';
+import {
+  appendMention,
+  findMentionedUsers,
+  getMentionSuggestions,
+  splitTextByMentions
+} from '../lib/mentions';
 
 const ReportIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -17,7 +23,18 @@ const formatDate = (dateValue) =>
     year: 'numeric'
   });
 
-const ForumPage = ({ currentUser, posts, onCreatePost, onVote, onComment, onReport }) => {
+const MentionText = ({ text }) =>
+  splitTextByMentions(text).map((part, index) =>
+    part.startsWith('@') ? (
+      <span key={`${part}-${index}`} className="mention-highlight">
+        {part}
+      </span>
+    ) : (
+      <React.Fragment key={`${part}-${index}`}>{part}</React.Fragment>
+    )
+  );
+
+const ForumPage = ({ currentUser, users = [], posts, onCreatePost, onVote, onComment, onReport }) => {
   const [postForm, setPostForm] = useState({
     title: '',
     body: '',
@@ -25,6 +42,9 @@ const ForumPage = ({ currentUser, posts, onCreatePost, onVote, onComment, onRepo
   });
   const [commentDrafts, setCommentDrafts] = useState({});
   const [openComments, setOpenComments] = useState({});
+  const [replyTargets, setReplyTargets] = useState({});
+
+  const mentionUsers = users.filter((user) => user.id !== currentUser.id);
 
   const handleCreatePost = (event) => {
     event.preventDefault();
@@ -46,8 +66,65 @@ const ForumPage = ({ currentUser, posts, onCreatePost, onVote, onComment, onRepo
     });
   };
 
+  const submitComment = (postId) => {
+    const text = (commentDrafts[postId] || '').trim();
+
+    if (!text) {
+      return;
+    }
+
+    onComment(postId, text, {
+      parentId: replyTargets[postId]?.id || null,
+      mentions: findMentionedUsers(text, mentionUsers)
+    });
+    setCommentDrafts((currentDrafts) => ({
+      ...currentDrafts,
+      [postId]: ''
+    }));
+    setReplyTargets((currentTargets) => ({
+      ...currentTargets,
+      [postId]: null
+    }));
+  };
+
+  const renderComment = (post, comment, commentsByParent, depth = 0) => {
+    const replies = commentsByParent.get(comment.id) || [];
+
+    return (
+      <div key={comment.id} className={`forum-comment ${depth > 0 ? 'forum-comment-reply' : ''}`}>
+        <div className="forum-comment-header">
+          <strong>{comment.userName}</strong>
+          <button
+            type="button"
+            className="forum-reply-button"
+            onClick={() => {
+              setOpenComments((current) => ({
+                ...current,
+                [post.id]: true
+              }));
+              setReplyTargets((currentTargets) => ({
+                ...currentTargets,
+                [post.id]: comment
+              }));
+            }}
+          >
+            Reply
+          </button>
+        </div>
+        <p>
+          <MentionText text={comment.text} />
+        </p>
+        {replies.length > 0 && (
+          <div className="forum-comment-replies">
+            {replies.map((reply) => renderComment(post, reply, commentsByParent, depth + 1))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <div className="page">
+    <div className="page forum-page">
       <h1>Community Forum</h1>
       <div className="upload-subtitle">
         <p>Ask for notes, share ideas, and help your classmates.</p>
@@ -131,12 +208,17 @@ const ForumPage = ({ currentUser, posts, onCreatePost, onVote, onComment, onRepo
                 <>
                   <div className="forum-comment-list">
                     {post.comments.length > 0 ? (
-                      post.comments.map((comment) => (
-                        <div key={comment.id} className="forum-comment">
-                          <strong>{comment.userName}</strong>
-                          <p>{comment.text}</p>
-                        </div>
-                      ))
+                      (() => {
+                        const commentsByParent = post.comments.reduce((groups, comment) => {
+                          const parentKey = comment.parentId || 'root';
+                          groups.set(parentKey, [...(groups.get(parentKey) || []), comment]);
+                          return groups;
+                        }, new Map());
+
+                        return (commentsByParent.get('root') || []).map((comment) =>
+                          renderComment(post, comment, commentsByParent)
+                        );
+                      })()
                     ) : (
                       <div className="forum-comment forum-comment-empty">
                         <p>No comments yet. Start the thread.</p>
@@ -145,10 +227,26 @@ const ForumPage = ({ currentUser, posts, onCreatePost, onVote, onComment, onRepo
                   </div>
 
                   <div className="forum-comment-form">
+                    {replyTargets[post.id] && (
+                      <div className="forum-comment-replying">
+                        Replying to {replyTargets[post.id].userName}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setReplyTargets((currentTargets) => ({
+                              ...currentTargets,
+                              [post.id]: null
+                            }))
+                          }
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
                     <textarea
                       rows="2"
                       value={commentDrafts[post.id] || ''}
-                      placeholder={`Reply as ${currentUser.name}`}
+                      placeholder={`Reply as ${currentUser.name}. Type @ to mention someone.`}
                       onChange={(event) =>
                         setCommentDrafts((currentDrafts) => ({
                           ...currentDrafts,
@@ -156,21 +254,30 @@ const ForumPage = ({ currentUser, posts, onCreatePost, onVote, onComment, onRepo
                         }))
                       }
                     />
+                    {getMentionSuggestions(commentDrafts[post.id] || '', mentionUsers).length > 0 && (
+                      <div className="mention-suggestions" aria-label="Mention suggestions">
+                        {getMentionSuggestions(commentDrafts[post.id] || '', mentionUsers).map((user) => (
+                          <button
+                            key={user.id}
+                            type="button"
+                            className="mention-suggestion-button"
+                            onClick={() =>
+                              setCommentDrafts((currentDrafts) => ({
+                                ...currentDrafts,
+                                [post.id]: appendMention(currentDrafts[post.id] || '', user)
+                              }))
+                            }
+                          >
+                            @{user.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <button
                       type="button"
-                      onClick={() => {
-                        const text = (commentDrafts[post.id] || '').trim();
-                        if (!text) {
-                          return;
-                        }
-                        onComment(post.id, text);
-                        setCommentDrafts((currentDrafts) => ({
-                          ...currentDrafts,
-                          [post.id]: ''
-                        }));
-                      }}
+                      onClick={() => submitComment(post.id)}
                     >
-                      Comment
+                      {replyTargets[post.id] ? 'Reply' : 'Comment'}
                     </button>
                   </div>
                 </>

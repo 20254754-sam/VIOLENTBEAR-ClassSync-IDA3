@@ -4,6 +4,46 @@ import SearchBar from '../components/SearchBar';
 import NoteList from '../components/NoteList';
 import UserAvatar from '../components/UserAvatar';
 
+const UserSearchActionIcon = ({ type }) => {
+  const paths = {
+    profile: (
+      <>
+        <path
+          d="M12 12.4a3.8 3.8 0 1 0 0-7.6 3.8 3.8 0 0 0 0 7.6Z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <path
+          d="M4.8 20a7.2 7.2 0 0 1 14.4 0"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeWidth="2"
+        />
+      </>
+    ),
+    message: (
+      <path
+        d="M5 6.8A2.8 2.8 0 0 1 7.8 4h8.4A2.8 2.8 0 0 1 19 6.8v5.4a2.8 2.8 0 0 1-2.8 2.8H10l-4.2 3v-3.3A2.8 2.8 0 0 1 5 12.2Z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+    )
+  };
+
+  return (
+    <span aria-hidden="true" className="user-search-action-icon">
+      <svg viewBox="0 0 24 24" focusable="false">
+        {paths[type]}
+      </svg>
+    </span>
+  );
+};
+
 const BrowsePage = ({ notes, users, currentUser, onToggleLike, onDelete, onEdit }) => {
   const [query, setQuery] = useState('');
 
@@ -46,7 +86,7 @@ const BrowsePage = ({ notes, users, currentUser, onToggleLike, onDelete, onEdit 
   }, [notes]);
 
   return (
-    <div className="page">
+    <div className="page browse-page">
       <h1>Browse Approved Notes</h1>
       <div className="upload-subtitle">
         <p>{filteredNotes.length} notes found</p>
@@ -70,8 +110,14 @@ const BrowsePage = ({ notes, users, currentUser, onToggleLike, onDelete, onEdit 
                   <small>{user.profileVisibility === 'public' ? 'Public profile' : 'Private profile with public notes'}</small>
                 </div>
                 <div className="user-search-card-actions">
-                  <Link to={`/users/${user.id}`} className="card-link-button">View profile</Link>
-                  <Link to={`/messages?user=${user.id}`} className="card-link-button">Message</Link>
+                  <Link to={`/users/${user.id}`} className="card-link-button user-search-action-button" aria-label={`View ${user.name}'s profile`}>
+                    <UserSearchActionIcon type="profile" />
+                    <span className="user-search-action-label">View profile</span>
+                  </Link>
+                  <Link to={`/messages?user=${user.id}`} className="card-link-button user-search-action-button" aria-label={`Message ${user.name}`}>
+                    <UserSearchActionIcon type="message" />
+                    <span className="user-search-action-label">Message</span>
+                  </Link>
                 </div>
               </article>
             ))}

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import AppModal from './components/AppModal';
 import Footer from './components/Footer';
 import Navbar from './components/Navbar';
@@ -52,6 +52,16 @@ const DB_KEYS = {
 
 const CANONICAL_ADMIN_EMAIL = 'admin@classsync.com';
 const LEGACY_ADMIN_EMAIL = 'admin@classsync.demo';
+
+const ScrollToTop = () => {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+
+  return null;
+};
 
 const DEMO_USERS = [
   {
@@ -533,7 +543,7 @@ const sortNewest = (items) =>
   [...items].sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
 
 const normalizeForumPosts = (posts) =>
-  posts.map((post) => {
+  (posts || []).map((post) => {
     const uniqueUpvotes = [...new Set(post.upvotes || [])];
     const uniqueDownvotes = [...new Set(post.downvotes || [])].filter(
       (userId) => !uniqueUpvotes.includes(userId)
@@ -543,7 +553,13 @@ const normalizeForumPosts = (posts) =>
       ...post,
       roomId: post.roomId || null,
       upvotes: uniqueUpvotes,
-      downvotes: uniqueDownvotes
+      downvotes: uniqueDownvotes,
+      comments: (post.comments || []).map((comment) => ({
+        ...comment,
+        parentId: comment.parentId || null,
+        mentions: Array.isArray(comment.mentions) ? comment.mentions : [],
+        createdAt: comment.createdAt || new Date().toISOString()
+      }))
     };
   });
 
@@ -586,6 +602,9 @@ const normalizeMessages = (messages) =>
     ...message,
     type: message.type || 'direct',
     roomId: message.roomId || null,
+    text: message.text || '',
+    voice: message.voice || null,
+    mentions: Array.isArray(message.mentions) ? message.mentions : [],
     participants: [...new Set(message.participants || [])],
     readBy: [...new Set(message.readBy || [message.senderId].filter(Boolean))],
     deletedFor: [...new Set(message.deletedFor || [])],
@@ -1898,7 +1917,7 @@ function App() {
     setNotifications((previousNotifications) => [nextNotification, ...previousNotifications]);
   };
 
-  const handleSendDirectMessage = (targetUserId, text) => {
+  const handleSendDirectMessage = (targetUserId, text, options = {}) => {
     if (!currentUser) {
       return {
         success: false,
@@ -1907,12 +1926,13 @@ function App() {
     }
 
     const trimmedText = text.trim();
+    const voice = options.voice || null;
     const targetUser = users.find((user) => user.id === targetUserId);
 
-    if (!trimmedText || !targetUser || targetUser.id === currentUser.id) {
+    if ((!trimmedText && !voice) || !targetUser || targetUser.id === currentUser.id) {
       return {
         success: false,
-        message: 'Choose a valid recipient and enter a message first.'
+        message: 'Choose a valid recipient and enter a message or voice note first.'
       };
     }
 
@@ -1928,6 +1948,7 @@ function App() {
       senderId: currentUser.id,
       senderName: currentUser.name,
       text: trimmedText,
+      voice,
       createdAt: now,
       updatedAt: now,
       readBy: [currentUser.id],
@@ -1938,7 +1959,7 @@ function App() {
     createNotification({
       targetUserId: targetUser.id,
       title: 'New direct message',
-      message: `${currentUser.name}: ${trimmedText.slice(0, 90)}`,
+      message: `${currentUser.name}: ${voice ? 'Sent a voice note' : trimmedText.slice(0, 90)}`,
       type: 'direct-message',
       link: `/messages?user=${currentUser.id}`
     });
@@ -1949,7 +1970,7 @@ function App() {
     };
   };
 
-  const handleSendRoomMessage = (roomId, text) => {
+  const handleSendRoomMessage = (roomId, text, options = {}) => {
     if (!currentUser) {
       return {
         success: false,
@@ -1959,6 +1980,7 @@ function App() {
 
     const trimmedText = text.trim();
     const room = rooms.find((item) => item.id === roomId);
+    const mentions = Array.isArray(options.mentions) ? options.mentions : [];
 
     if (!trimmedText || !room || !room.memberIds.includes(currentUser.id)) {
       return {
@@ -1977,6 +1999,7 @@ function App() {
       senderId: currentUser.id,
       senderName: currentUser.name,
       text: trimmedText,
+      mentions,
       createdAt: now,
       updatedAt: now,
       readBy: [currentUser.id],
@@ -1984,6 +2007,18 @@ function App() {
     };
 
     setMessages((previousMessages) => [nextMessage, ...previousMessages]);
+
+    mentions
+      .filter((mention) => mention.id !== currentUser.id && room.memberIds.includes(mention.id))
+      .forEach((mention) => {
+        createNotification({
+          targetUserId: mention.id,
+          title: 'You were mentioned in room chat',
+          message: `${currentUser.name} mentioned you in ${room.name}.`,
+          type: 'room-message',
+          link: `/rooms/${room.id}`
+        });
+      });
 
     return {
       success: true,
@@ -2264,23 +2299,26 @@ function App() {
     );
   };
 
-  const handleCommentOnPost = (postId, commentText) => {
+  const handleCommentOnPost = (postId, commentText, options = {}) => {
     if (!currentUser) {
       return;
     }
 
     const commentedPost = forumPosts.find((post) => post.id === postId);
+    const mentions = Array.isArray(options.mentions) ? options.mentions : [];
     const newComment = {
-      id: Date.now(),
+      id: `comment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       userId: currentUser.id,
       userName: currentUser.name,
       text: commentText,
+      parentId: options.parentId || null,
+      mentions,
       createdAt: new Date().toISOString()
     };
 
     setForumPosts((previousPosts) =>
       previousPosts.map((post) =>
-        post.id === postId ? { ...post, comments: [...post.comments, newComment] } : post
+        post.id === postId ? { ...post, comments: [...(post.comments || []), newComment] } : post
       )
     );
 
@@ -2292,6 +2330,23 @@ function App() {
         type: 'forum-comment',
         link: commentedPost.roomId ? `/rooms/${commentedPost.roomId}` : '/forum'
       });
+    }
+
+    if (commentedPost) {
+      const alreadyNotified = new Set([currentUser.id, commentedPost.authorId]);
+
+      mentions
+        .filter((mention) => mention.id && !alreadyNotified.has(mention.id))
+        .forEach((mention) => {
+          alreadyNotified.add(mention.id);
+          createNotification({
+            targetUserId: mention.id,
+            title: 'You were mentioned in a comment',
+            message: `${currentUser.name} mentioned you on "${commentedPost.title}".`,
+            type: 'forum-mention',
+            link: commentedPost.roomId ? `/rooms/${commentedPost.roomId}` : '/forum'
+          });
+        });
     }
   };
 
@@ -2459,6 +2514,7 @@ function App() {
   if (!currentUser) {
     return (
       <div className="app">
+        <ScrollToTop />
         <Routes>
           <Route
             path="/login"
@@ -2494,6 +2550,7 @@ function App() {
 
   return (
     <div className="app">
+      <ScrollToTop />
       <Navbar
         currentUser={currentUserForDisplay}
         onLogout={handleLogout}
@@ -2619,6 +2676,7 @@ function App() {
             element={
               <ForumPage
                 currentUser={currentUser}
+                users={users}
                 posts={sortedForumPosts}
                 onCreatePost={handleCreateForumPost}
                 onVote={handleVoteForumPost}

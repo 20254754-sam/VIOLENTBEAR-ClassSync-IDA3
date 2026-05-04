@@ -15,7 +15,7 @@ const NotificationsPage = ({ currentUser, items, onMarkRead, onMarkAllRead }) =>
   const actionableNotifications = items.filter((item) => item.kind !== 'report' && !item.readAt).length;
 
   return (
-    <div className="page">
+    <div className="page notifications-page">
       <section className="notification-shell">
         <div className="notification-hero">
           <div className="notification-header">
