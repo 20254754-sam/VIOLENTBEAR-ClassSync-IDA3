@@ -2300,18 +2300,44 @@ html[data-theme='dark'] .forum-comment-form textarea {
 
 .auth-copy-books {
   position: absolute;
-  inset: auto 0 0 auto;
-  width: 220px;
-  height: 220px;
-  pointer-events: none;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
+  z-index: 2;
 }
 
 .auth-copy-book {
   position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 52px;
   height: 52px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: rgba(106, 99, 210, 0.32);
+  cursor: pointer;
   animation: authBookFloat 7s ease-in-out infinite;
+}
+
+.auth-copy-book:disabled {
+  cursor: default;
+}
+
+.auth-copy-book:focus-visible {
+  outline: 3px solid var(--accent-warm);
+  outline-offset: 7px;
+  border-radius: 999px;
+}
+
+.auth-copy-book-popped {
+  pointer-events: none;
+}
+
+.auth-copy-book-popped svg {
+  animation: authBookPop 0.38s ease forwards;
 }
 
 .auth-copy-book svg {
@@ -2320,23 +2346,51 @@ html[data-theme='dark'] .forum-comment-form textarea {
 }
 
 .auth-copy-book-one {
-  top: 24px;
-  right: 34px;
+  top: 16%;
+  right: 12%;
   color: rgba(78, 110, 216, 0.34);
 }
 
 .auth-copy-book-two {
-  top: 92px;
-  right: 122px;
+  top: 50%;
+  right: 30%;
   color: rgba(240, 139, 168, 0.32);
   animation-delay: 1.4s;
 }
 
 .auth-copy-book-three {
-  top: 146px;
-  right: 18px;
+  right: 7%;
+  bottom: 13%;
   color: rgba(244, 211, 155, 0.42);
   animation-delay: 2.2s;
+}
+
+.auth-copy-book-four {
+  top: 28%;
+  right: 42%;
+  color: rgba(91, 116, 214, 0.34);
+  animation-delay: 3s;
+}
+
+.auth-copy-book-five {
+  right: 25%;
+  bottom: 7%;
+  color: rgba(240, 139, 168, 0.34);
+  animation-delay: 3.8s;
+}
+
+.auth-copy-book-six {
+  top: 64%;
+  right: 52%;
+  color: rgba(106, 99, 210, 0.3);
+  animation-delay: 4.5s;
+}
+
+.auth-copy-book-seven {
+  top: 38%;
+  right: 4%;
+  color: rgba(78, 110, 216, 0.3);
+  animation-delay: 5.2s;
 }
 
 @keyframes authBookFloat {
@@ -2933,8 +2987,11 @@ html[data-theme='dark'] .app-footer {
     margin-left: 0;
     padding: 5.4rem 1rem 1.35rem;
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto;
     align-items: stretch;
+    justify-content: stretch;
+    justify-items: stretch;
     gap: 1.1rem;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(248, 251, 255, 0.72)),
@@ -2974,6 +3031,7 @@ html[data-theme='dark'] .app-footer {
     margin-left: 0;
     flex-direction: column;
     align-items: stretch;
+    justify-content: flex-start;
   }
 
   .nav-links {
@@ -2982,8 +3040,10 @@ html[data-theme='dark'] .app-footer {
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
-    padding-right: 0.2rem;
+    justify-content: flex-start;
+    padding: 0.1rem 0 0.2rem;
     scrollbar-width: thin;
+    scrollbar-gutter: stable;
     scrollbar-color: rgba(91, 116, 214, 0.55) rgba(91, 116, 214, 0.08);
   }
 
@@ -3002,9 +3062,12 @@ html[data-theme='dark'] .app-footer {
   }
 
   .nav-links a {
+    width: 100%;
+    box-sizing: border-box;
     min-height: 48px;
     justify-content: flex-start;
     padding: 0.9rem 1rem;
+    text-align: left;
     background: rgba(255, 255, 255, 0.18);
     border: 1px solid rgba(91, 116, 214, 0.24);
     box-shadow:
@@ -3561,6 +3624,16 @@ html[data-theme='dark'] .auth-note {
   bottom: 20%;
 }
 
+.auth-note-thirteen {
+  left: 4%;
+  top: 72%;
+}
+
+.auth-note-fourteen {
+  right: 5%;
+  top: 72%;
+}
+
 .auth-note-one .auth-note {
   animation: authDrift 11s infinite;
 }
@@ -3607,6 +3680,14 @@ html[data-theme='dark'] .auth-note {
 
 .auth-note-twelve .auth-note {
   animation: authDrift 11.5s infinite reverse;
+}
+
+.auth-note-thirteen .auth-note {
+  animation: authDrift 10.7s infinite;
+}
+
+.auth-note-fourteen .auth-note {
+  animation: authDrift 12.2s infinite reverse;
 }
 
 .auth-card {
@@ -3828,7 +3909,8 @@ html[data-theme='dark'] .auth-note {
 
 .classblocks-piece-active {
   cursor: grabbing;
-  opacity: 0.72;
+  opacity: 0.22;
+  transform: scale(0.96);
 }
 
 .classblocks-piece-dot,
@@ -3846,13 +3928,12 @@ html[data-theme='dark'] .auth-note {
   position: fixed;
   z-index: 2500;
   display: grid;
-  grid-template-columns: repeat(var(--piece-cols), 22px);
-  grid-template-rows: repeat(var(--piece-rows), 22px);
-  gap: 0.28rem;
+  grid-template-columns: repeat(var(--piece-cols), 18px);
+  grid-template-rows: repeat(var(--piece-rows), 18px);
+  gap: 0.25rem;
   padding: 0.8rem;
   border-radius: 18px;
   pointer-events: none;
-  transform: translate(-50%, -50%) scale(1.08);
   background: rgba(255, 255, 255, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.72);
   box-shadow:
@@ -3863,12 +3944,138 @@ html[data-theme='dark'] .auth-note {
 
 .classblocks-drag-preview .classblocks-piece-dot,
 .classblocks-drag-preview .classblocks-piece-gap {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
 }
 
 .classblocks-start {
   margin-top: 0.15rem;
+}
+
+html[data-theme='dark'] .classblocks-panel {
+  background:
+    radial-gradient(circle at 12% 8%, rgba(140, 163, 255, 0.24), transparent 36%),
+    radial-gradient(circle at 92% 18%, rgba(240, 139, 168, 0.18), transparent 32%),
+    linear-gradient(145deg, rgba(22, 31, 52, 0.82), rgba(12, 18, 32, 0.72)),
+    rgba(17, 24, 39, 0.7);
+  border-color: rgba(140, 163, 255, 0.2);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 24px 52px rgba(0, 0, 0, 0.34),
+    0 0 42px rgba(91, 116, 214, 0.14);
+  backdrop-filter: blur(24px) saturate(145%);
+}
+
+html[data-theme='dark'] .classblocks-header h2 {
+  color: rgba(248, 251, 255, 0.96);
+  text-shadow: 0 10px 28px rgba(91, 116, 214, 0.22);
+}
+
+html[data-theme='dark'] .classblocks-header strong {
+  color: #fff;
+  background:
+    linear-gradient(135deg, rgba(140, 163, 255, 0.95), rgba(151, 118, 232, 0.95), rgba(240, 139, 168, 0.92));
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 14px 30px rgba(91, 116, 214, 0.28),
+    0 0 28px rgba(240, 139, 168, 0.14);
+}
+
+html[data-theme='dark'] .classblocks-exit-button {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(140, 163, 255, 0.18);
+  color: rgba(225, 232, 255, 0.82);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
+}
+
+html[data-theme='dark'] .classblocks-exit-button:hover {
+  color: #fff;
+  border-color: rgba(240, 139, 168, 0.38);
+  background: rgba(240, 139, 168, 0.12);
+}
+
+html[data-theme='dark'] .classblocks-message {
+  color: rgba(217, 225, 245, 0.78);
+}
+
+html[data-theme='dark'] .classblocks-board {
+  background:
+    radial-gradient(circle at top left, rgba(140, 163, 255, 0.16), transparent 38%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.035)),
+    rgba(8, 13, 25, 0.62);
+  border-color: rgba(140, 163, 255, 0.2);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -14px 34px rgba(0, 0, 0, 0.22),
+    0 18px 34px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(16px);
+}
+
+html[data-theme='dark'] .classblocks-cell {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.055)),
+    rgba(19, 28, 48, 0.72);
+  border-color: rgba(140, 163, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 6px 14px rgba(0, 0, 0, 0.16);
+}
+
+html[data-theme='dark'] .classblocks-cell:hover {
+  border-color: rgba(240, 139, 168, 0.36);
+  background:
+    linear-gradient(145deg, rgba(140, 163, 255, 0.18), rgba(240, 139, 168, 0.08)),
+    rgba(22, 31, 52, 0.82);
+}
+
+html[data-theme='dark'] .classblocks-cell-filled {
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--block-color) 78%, white 22%), var(--block-color));
+  border-color: color-mix(in srgb, var(--block-color) 68%, white 32%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 10px 20px color-mix(in srgb, var(--block-color) 32%, transparent),
+    0 0 18px color-mix(in srgb, var(--block-color) 22%, transparent);
+}
+
+html[data-theme='dark'] .classblocks-piece {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.045)),
+    rgba(18, 27, 46, 0.74);
+  border-color: rgba(140, 163, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 12px 24px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(14px);
+}
+
+html[data-theme='dark'] .classblocks-piece:not(:disabled):hover,
+html[data-theme='dark'] .classblocks-piece-active {
+  border-color: color-mix(in srgb, var(--piece-color) 62%, white 38%);
+  background:
+    radial-gradient(circle at top, color-mix(in srgb, var(--piece-color) 24%, transparent), transparent 58%),
+    rgba(22, 31, 52, 0.86);
+  box-shadow:
+    0 16px 30px color-mix(in srgb, var(--piece-color) 24%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+html[data-theme='dark'] .classblocks-piece-dot {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.24),
+    0 0 14px color-mix(in srgb, var(--piece-color) 32%, transparent);
+}
+
+html[data-theme='dark'] .classblocks-drag-preview {
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.08)),
+    rgba(18, 27, 46, 0.74);
+  border-color: rgba(255, 255, 255, 0.18);
+  box-shadow:
+    0 24px 48px rgba(0, 0, 0, 0.36),
+    0 0 30px color-mix(in srgb, var(--piece-color) 34%, transparent);
 }
 
 @keyframes classblocksFadeIn {
@@ -5649,7 +5856,57 @@ html[data-theme='dark'] .profile-details-panel strong {
   }
 
   .auth-copy {
+    min-height: 280px;
     padding: 1.25rem;
+    padding-bottom: 6.5rem;
+  }
+
+  .auth-copy-books {
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    transform: scale(0.78);
+    transform-origin: bottom right;
+  }
+
+  .auth-copy-book {
+    width: 48px;
+    height: 48px;
+  }
+
+  .auth-copy-book-one {
+    top: 52%;
+    right: 11%;
+  }
+
+  .auth-copy-book-two {
+    top: 66%;
+    right: 25%;
+  }
+
+  .auth-copy-book-three {
+    top: 79%;
+    right: 8%;
+  }
+
+  .auth-copy-book-four {
+    top: 58%;
+    right: 42%;
+  }
+
+  .auth-copy-book-five {
+    top: 82%;
+    right: 29%;
+  }
+
+  .auth-copy-book-six {
+    top: 72%;
+    right: 51%;
+  }
+
+  .auth-copy-book-seven {
+    top: 68%;
+    right: 4%;
   }
 
   .admin-section-block,

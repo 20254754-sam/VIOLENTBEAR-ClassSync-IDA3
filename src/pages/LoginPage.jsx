@@ -12,7 +12,23 @@ const backgroundNotes = [
   { className: 'auth-note-five', x: 0.16, y: 0.06, color: 'rgba(91, 116, 214, 0.54)' },
   { className: 'auth-note-six', x: -0.08, y: 0.15, color: 'rgba(240, 139, 168, 0.54)' },
   { className: 'auth-note-seven', x: 0.1, y: -0.16, color: 'rgba(106, 99, 210, 0.52)' },
-  { className: 'auth-note-eight', x: -0.15, y: 0.12, color: 'rgba(255, 240, 201, 0.64)' }
+  { className: 'auth-note-eight', x: -0.15, y: 0.12, color: 'rgba(255, 240, 201, 0.64)' },
+  { className: 'auth-note-nine', x: 0.15, y: -0.08, color: 'rgba(78, 110, 216, 0.44)' },
+  { className: 'auth-note-ten', x: -0.1, y: 0.18, color: 'rgba(240, 139, 168, 0.46)' },
+  { className: 'auth-note-eleven', x: 0.08, y: 0.14, color: 'rgba(106, 99, 210, 0.42)' },
+  { className: 'auth-note-twelve', x: -0.16, y: -0.06, color: 'rgba(244, 211, 155, 0.5)' },
+  { className: 'auth-note-thirteen', x: 0.12, y: -0.18, color: 'rgba(91, 116, 214, 0.42)' },
+  { className: 'auth-note-fourteen', x: -0.1, y: 0.12, color: 'rgba(240, 139, 168, 0.44)' }
+];
+
+const cardBooks = [
+  { className: 'auth-copy-book-one' },
+  { className: 'auth-copy-book-two' },
+  { className: 'auth-copy-book-three' },
+  { className: 'auth-copy-book-four' },
+  { className: 'auth-copy-book-five' },
+  { className: 'auth-copy-book-six' },
+  { className: 'auth-copy-book-seven' }
 ];
 
 const getEmailPrefix = (value) => value.replace(/@classsync\.com$/i, '').replace(/\s+/g, '');
@@ -156,6 +172,7 @@ const ClassBlocksGame = ({ onExit }) => {
   const [pieces, setPieces] = useState(() => getNextPieces());
   const [draggedPieceId, setDraggedPieceId] = useState(null);
   const [dragPosition, setDragPosition] = useState(null);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const [clearingCells, setClearingCells] = useState(() => new Set());
   const [isClearing, setIsClearing] = useState(false);
   const [score, setScore] = useState(0);
@@ -169,6 +186,7 @@ const ClassBlocksGame = ({ onExit }) => {
     setPieces(getNextPieces(0));
     setDraggedPieceId(null);
     setDragPosition(null);
+    setDragOffset({ x: 0, y: 0 });
     setClearingCells(new Set());
     setIsClearing(false);
     setScore(0);
@@ -259,9 +277,15 @@ const ClassBlocksGame = ({ onExit }) => {
     }
 
     event.preventDefault();
+    const pieceRect = event.currentTarget.getBoundingClientRect();
+
     event.currentTarget.setPointerCapture?.(event.pointerId);
     setDraggedPieceId(piece.id);
     setDragPosition({ x: event.clientX, y: event.clientY });
+    setDragOffset({
+      x: event.clientX - pieceRect.left,
+      y: event.clientY - pieceRect.top
+    });
     setMessage('Drop the piece onto the board.');
   };
 
@@ -285,6 +309,7 @@ const ClassBlocksGame = ({ onExit }) => {
     if (!dropTarget) {
       setDraggedPieceId(null);
       setDragPosition(null);
+      setDragOffset({ x: 0, y: 0 });
       setMessage('Drop it on the board.');
       return;
     }
@@ -346,6 +371,7 @@ const ClassBlocksGame = ({ onExit }) => {
               onPointerCancel={() => {
                 setDraggedPieceId(null);
                 setDragPosition(null);
+                setDragOffset({ x: 0, y: 0 });
               }}
               disabled={!started || isClearing}
               aria-label={`Select ${piece.id} piece`}
@@ -369,8 +395,8 @@ const ClassBlocksGame = ({ onExit }) => {
             '--piece-color': draggedPiece.color,
             '--piece-cols': getPieceFootprint(draggedPiece).width,
             '--piece-rows': getPieceFootprint(draggedPiece).height,
-            left: dragPosition.x,
-            top: dragPosition.y
+            left: dragPosition.x - dragOffset.x,
+            top: dragPosition.y - dragOffset.y
           }}
           aria-hidden="true"
         >
@@ -626,16 +652,25 @@ const LoginPage = ({
             Students can upload notes and join discussions. Admin accounts review submissions
             before they become visible to everyone.
           </p>
-          <div className="auth-copy-books" aria-hidden="true">
-            <span className="auth-copy-book auth-copy-book-one">
-              <BookGlyph />
-            </span>
-            <span className="auth-copy-book auth-copy-book-two">
-              <BookGlyph />
-            </span>
-            <span className="auth-copy-book auth-copy-book-three">
-              <BookGlyph />
-            </span>
+          <div className="auth-copy-books" aria-label="Hidden ClassBlocks unlock books">
+            {cardBooks.map((book) => {
+              const bookId = `card-${book.className}`;
+
+              return (
+                <button
+                  type="button"
+                  key={book.className}
+                  className={`auth-copy-book ${book.className} ${
+                    poppedBooks.includes(bookId) ? 'auth-copy-book-popped' : ''
+                  }`}
+                  onClick={() => handlePopBook(bookId)}
+                  aria-label="Pop card book"
+                  disabled={poppedBooks.includes(bookId) || isGameUnlocked}
+                >
+                  <BookGlyph />
+                </button>
+              );
+            })}
           </div>
         </div>
 
