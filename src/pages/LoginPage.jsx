@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import BrandLogo from '../components/BrandLogo';
 import { readDbValue, subscribeToDbCollection, writeDbValue } from '../lib/classsyncDb';
@@ -783,6 +784,29 @@ const ClassBlocksGame = ({ player, leaderboard, onRecordScore, onExit }) => {
     handlePlacePiece(draggedPiece, dropOrigin.row, dropOrigin.col);
   };
 
+  useEffect(() => {
+    if (!draggedPieceId) {
+      return undefined;
+    }
+
+    const handleWindowPointerMove = (event) => {
+      setDragPosition({ x: event.clientX, y: event.clientY });
+      updateLinePreview(event.clientX, event.clientY);
+    };
+
+    const handleWindowPointerUp = () => {
+      handlePiecePointerUp();
+    };
+
+    window.addEventListener('pointermove', handleWindowPointerMove);
+    window.addEventListener('pointerup', handleWindowPointerUp);
+
+    return () => {
+      window.removeEventListener('pointermove', handleWindowPointerMove);
+      window.removeEventListener('pointerup', handleWindowPointerUp);
+    };
+  }, [draggedPieceId, draggedPiece, dragOffset, dragPreviewMetrics, board, pieces]);
+
   const handleSaveScore = (event) => {
     event.preventDefault();
     const trimmedName = playerName.trim();
@@ -897,8 +921,6 @@ const ClassBlocksGame = ({ player, leaderboard, onRecordScore, onExit }) => {
                 '--piece-rows': footprint.height
               }}
               onPointerDown={(event) => handlePiecePointerDown(event, piece)}
-              onPointerMove={handlePiecePointerMove}
-              onPointerUp={handlePiecePointerUp}
               onPointerCancel={() => {
                 resetDraggedPiece();
               }}
@@ -917,32 +939,36 @@ const ClassBlocksGame = ({ player, leaderboard, onRecordScore, onExit }) => {
         })}
       </div>
 
-      {draggedPiece && dragPosition && (
-        <div
-          className="classblocks-drag-preview"
-          style={{
-            '--piece-color': draggedPiece.color,
-            '--piece-cols': getPieceFootprint(draggedPiece).width,
-            '--piece-rows': getPieceFootprint(draggedPiece).height,
-            '--drag-cell-size': `${dragPreviewMetrics.cellSize}px`,
-            '--drag-gap-size': `${dragPreviewMetrics.gapSize}px`,
-            left: dragPosition.x - dragOffset.x,
-            top: dragPosition.y - dragOffset.y
-          }}
-          aria-hidden="true"
-        >
-          {Array.from({ length: getPieceFootprint(draggedPiece).width * getPieceFootprint(draggedPiece).height }).map(
-            (_, index) => {
-              const footprint = getPieceFootprint(draggedPiece);
-              const x = index % footprint.width;
-              const y = Math.floor(index / footprint.width);
-              const isFilled = draggedPiece.cells.some(([cellX, cellY]) => cellX === x && cellY === y);
+      {draggedPiece &&
+        dragPosition &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="classblocks-drag-preview"
+            style={{
+              '--piece-color': draggedPiece.color,
+              '--piece-cols': getPieceFootprint(draggedPiece).width,
+              '--piece-rows': getPieceFootprint(draggedPiece).height,
+              '--drag-cell-size': `${dragPreviewMetrics.cellSize}px`,
+              '--drag-gap-size': `${dragPreviewMetrics.gapSize}px`,
+              left: dragPosition.x - dragOffset.x,
+              top: dragPosition.y - dragOffset.y
+            }}
+            aria-hidden="true"
+          >
+            {Array.from({ length: getPieceFootprint(draggedPiece).width * getPieceFootprint(draggedPiece).height }).map(
+              (_, index) => {
+                const footprint = getPieceFootprint(draggedPiece);
+                const x = index % footprint.width;
+                const y = Math.floor(index / footprint.width);
+                const isFilled = draggedPiece.cells.some(([cellX, cellY]) => cellX === x && cellY === y);
 
-              return <span key={index} className={isFilled ? 'classblocks-piece-dot' : 'classblocks-piece-gap'} />;
-            }
-          )}
-        </div>
-      )}
+                return <span key={index} className={isFilled ? 'classblocks-piece-dot' : 'classblocks-piece-gap'} />;
+              }
+            )}
+          </div>,
+          document.body
+        )}
 
       <button type="button" className="auth-submit-button classblocks-start" onClick={resetGame}>
         {isGameOver ? 'Play again' : started ? 'Restart game' : 'Start game'}

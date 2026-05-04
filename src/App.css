@@ -4754,7 +4754,7 @@ html[data-theme='dark'] .classblocks-leaderboard-current {
 .auth-form-panel-active {
   position: relative;
   opacity: 1;
-  transform: translateX(0) scale(1);
+  transform: none;
   filter: blur(0);
   pointer-events: auto;
   z-index: 2;
