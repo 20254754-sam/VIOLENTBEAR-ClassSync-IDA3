@@ -72,6 +72,40 @@ alter table public.classsync_rooms enable row level security;
 alter table public.classsync_reports enable row level security;
 alter table public.classsync_notifications enable row level security;
 
+alter table public.classsync_users replica identity full;
+alter table public.classsync_notes replica identity full;
+alter table public.classsync_forum_posts replica identity full;
+alter table public.classsync_messages replica identity full;
+alter table public.classsync_rooms replica identity full;
+alter table public.classsync_reports replica identity full;
+alter table public.classsync_notifications replica identity full;
+
+do $$
+declare
+  realtime_table text;
+begin
+  foreach realtime_table in array array[
+    'classsync_users',
+    'classsync_notes',
+    'classsync_forum_posts',
+    'classsync_messages',
+    'classsync_rooms',
+    'classsync_reports',
+    'classsync_notifications'
+  ]
+  loop
+    if not exists (
+      select 1
+      from pg_publication_tables
+      where pubname = 'supabase_realtime'
+        and schemaname = 'public'
+        and tablename = realtime_table
+    ) then
+      execute format('alter publication supabase_realtime add table public.%I', realtime_table);
+    end if;
+  end loop;
+end $$;
+
 drop policy if exists "App state is readable by everyone" on public.app_state;
 create policy "App state is readable by everyone"
 on public.app_state

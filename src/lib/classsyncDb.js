@@ -89,6 +89,8 @@ const getCollectionTimestamp = (item) => item?.updatedAt || item?.createdAt || n
 
 const getCloudTable = (key) => CLOUD_TABLES[key] || null;
 
+export const getDbTableName = (key) => getCloudTable(key);
+
 const readLocalDbValue = async (key, fallback) => {
   try {
     const result = await withStore('readonly', (store) => store.get(key));
@@ -337,6 +339,31 @@ export const readManyDbSnapshots = async (entries) => {
     accumulator[entry.key] = snapshots[index];
     return accumulator;
   }, {});
+};
+
+export const subscribeToDbCollection = (key, onChange) => {
+  const tableName = getCloudTable(key);
+
+  if (!isSupabaseConfigured || !tableName) {
+    return () => undefined;
+  }
+
+  const channel = supabase
+    .channel(`classsync:${tableName}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: tableName
+      },
+      onChange
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 };
 
 export const isCloudSyncEnabled = isSupabaseConfigured;

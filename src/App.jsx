@@ -18,7 +18,14 @@ import NotificationsPage from './pages/NotificationsPage';
 import RoomsPage from './pages/RoomsPage';
 import RoomDetailsPage from './pages/RoomDetailsPage';
 import RoomNoteDetailsPage from './pages/RoomNoteDetailsPage';
-import { deleteDbItem, isCloudSyncEnabled, readDbValue, readManyDbSnapshots, writeDbValue } from './lib/classsyncDb';
+import {
+  deleteDbItem,
+  isCloudSyncEnabled,
+  readDbValue,
+  readManyDbSnapshots,
+  subscribeToDbCollection,
+  writeDbValue
+} from './lib/classsyncDb';
 import './App.css';
 
 const STORAGE_KEYS = {
@@ -389,6 +396,16 @@ const writeStorage = (key, value) => {
   }
 };
 
+const writeCollectionStorage = ({ users, notes, forumPosts, messages, notifications, reports, rooms }) => {
+  writeStorage(STORAGE_KEYS.users, users);
+  writeStorage(STORAGE_KEYS.notes, notes);
+  writeStorage(STORAGE_KEYS.forum, forumPosts);
+  writeStorage(STORAGE_KEYS.messages, messages);
+  writeStorage(STORAGE_KEYS.notifications, notifications);
+  writeStorage(STORAGE_KEYS.reports, reports);
+  writeStorage(STORAGE_KEYS.rooms, rooms);
+};
+
 const escapeSvgText = (value) =>
   String(value || '')
     .replace(/&/g, '&amp;')
@@ -480,6 +497,29 @@ const sortById = (items) =>
 
 const areCollectionsEqual = (firstItems, secondItems) =>
   JSON.stringify(sortById(firstItems)) === JSON.stringify(sortById(secondItems));
+
+const removeCollectionItem = (items, itemId) =>
+  (items || []).filter((item) => String(item?.id) !== String(itemId));
+
+const getRealtimePayloadItem = (change) => change?.new?.payload || change?.old?.payload || null;
+
+const applyRealtimeCollectionChange = (setCollection, normalizeCollection) => (change) => {
+  const payloadItem = getRealtimePayloadItem(change);
+  const rowId = change?.old?.id || change?.new?.id || payloadItem?.id;
+
+  if (!rowId && !payloadItem) {
+    return;
+  }
+
+  setCollection((previousItems) => {
+    const nextItems =
+      change.eventType === 'DELETE'
+        ? removeCollectionItem(previousItems, rowId)
+        : normalizeCollection(mergeCollections(previousItems, [payloadItem]));
+
+    return areCollectionsEqual(previousItems, nextItems) ? previousItems : nextItems;
+  });
+};
 
 const mergeSeedNotes = (storedNotes) => {
   const existingNotes = Array.isArray(storedNotes) ? storedNotes : [];
@@ -896,10 +936,18 @@ function App() {
         .map(({ key, nextValue }) => writeDbValue(key, nextValue));
 
       if (pendingWrites.length > 0) {
-        await Promise.all(pendingWrites);
+        await Promise.all(pendingWrites.map((write) => write.catch(() => undefined)));
       }
 
-      writeStorage(STORAGE_KEYS.users, nextUsers);
+      writeCollectionStorage({
+        users: nextUsers,
+        notes: nextNotes,
+        forumPosts: nextForumPosts,
+        messages: nextMessages,
+        notifications: nextNotifications,
+        reports: nextReports,
+        rooms: nextRooms
+      });
 
       if (legacyAdminIds.length > 0) {
         await Promise.all(legacyAdminIds.map((userId) => deleteDbItem(DB_KEYS.users, userId).catch(() => undefined)));
@@ -942,6 +990,7 @@ function App() {
       return;
     }
 
+    writeStorage(STORAGE_KEYS.notes, notes);
     writeDbValue(DB_KEYS.notes, notes).catch(() => {
       writeStorage(STORAGE_KEYS.notes, notes);
     });
@@ -957,6 +1006,7 @@ function App() {
       return;
     }
 
+    writeStorage(STORAGE_KEYS.users, users);
     writeDbValue(DB_KEYS.users, users).catch(() => {
       writeStorage(STORAGE_KEYS.users, users);
     });
@@ -972,6 +1022,7 @@ function App() {
       return;
     }
 
+    writeStorage(STORAGE_KEYS.forum, forumPosts);
     writeDbValue(DB_KEYS.forum, forumPosts).catch(() => {
       writeStorage(STORAGE_KEYS.forum, forumPosts);
     });
@@ -987,6 +1038,7 @@ function App() {
       return;
     }
 
+    writeStorage(STORAGE_KEYS.messages, messages);
     writeDbValue(DB_KEYS.messages, messages).catch(() => {
       writeStorage(STORAGE_KEYS.messages, messages);
     });
@@ -1002,6 +1054,7 @@ function App() {
       return;
     }
 
+    writeStorage(STORAGE_KEYS.notifications, notifications);
     writeDbValue(DB_KEYS.notifications, notifications).catch(() => {
       writeStorage(STORAGE_KEYS.notifications, notifications);
     });
@@ -1017,6 +1070,7 @@ function App() {
       return;
     }
 
+    writeStorage(STORAGE_KEYS.reports, reports);
     writeDbValue(DB_KEYS.reports, reports).catch(() => {
       writeStorage(STORAGE_KEYS.reports, reports);
     });
@@ -1032,10 +1086,52 @@ function App() {
       return;
     }
 
+    writeStorage(STORAGE_KEYS.rooms, rooms);
     writeDbValue(DB_KEYS.rooms, rooms).catch(() => {
       writeStorage(STORAGE_KEYS.rooms, rooms);
     });
   }, [isHydrating, rooms]);
+
+  useEffect(() => {
+    if (isHydrating || !isCloudSyncEnabled) {
+      return undefined;
+    }
+
+    const unsubscribeHandlers = [
+      subscribeToDbCollection(
+        DB_KEYS.users,
+        applyRealtimeCollectionChange(setUsers, normalizeUserCollection)
+      ),
+      subscribeToDbCollection(
+        DB_KEYS.notes,
+        applyRealtimeCollectionChange(setNotes, normalizeNotes)
+      ),
+      subscribeToDbCollection(
+        DB_KEYS.forum,
+        applyRealtimeCollectionChange(setForumPosts, normalizeForumPosts)
+      ),
+      subscribeToDbCollection(
+        DB_KEYS.messages,
+        applyRealtimeCollectionChange(setMessages, normalizeMessages)
+      ),
+      subscribeToDbCollection(
+        DB_KEYS.notifications,
+        applyRealtimeCollectionChange(setNotifications, normalizeNotifications)
+      ),
+      subscribeToDbCollection(
+        DB_KEYS.reports,
+        applyRealtimeCollectionChange(setReports, normalizeReports)
+      ),
+      subscribeToDbCollection(
+        DB_KEYS.rooms,
+        applyRealtimeCollectionChange(setRooms, normalizeRooms)
+      )
+    ];
+
+    return () => {
+      unsubscribeHandlers.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [isHydrating]);
 
   useEffect(() => {
     if (currentUser) {
