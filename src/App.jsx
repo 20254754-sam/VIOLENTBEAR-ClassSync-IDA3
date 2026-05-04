@@ -43,6 +43,9 @@ const DB_KEYS = {
   users: 'users'
 };
 
+const CANONICAL_ADMIN_EMAIL = 'admin@classsync.com';
+const LEGACY_ADMIN_EMAIL = 'admin@classsync.demo';
+
 const DEMO_USERS = [
   {
     id: 'student-1',
@@ -377,6 +380,15 @@ const readStorage = (key, fallback) => {
   }
 };
 
+const writeStorage = (key, value) => {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const escapeSvgText = (value) =>
   String(value || '')
     .replace(/&/g, '&amp;')
@@ -536,6 +548,7 @@ const normalizeMessages = (messages) =>
     roomId: message.roomId || null,
     participants: [...new Set(message.participants || [])],
     readBy: [...new Set(message.readBy || [message.senderId].filter(Boolean))],
+    deletedFor: [...new Set(message.deletedFor || [])],
     conversationKey:
       message.conversationKey ||
       (message.type === 'room'
@@ -548,10 +561,16 @@ const normalizeMessages = (messages) =>
 const normalizeUserRecord = (user) => {
   const normalizedName = user?.name?.trim() || 'ClassSync User';
   const normalizedRole = user?.role || 'student';
+  const normalizedEmail =
+    user?.email?.trim()?.toLowerCase() === LEGACY_ADMIN_EMAIL
+      ? CANONICAL_ADMIN_EMAIL
+      : user?.email?.trim()?.toLowerCase() || '';
 
   return {
     ...user,
     name: normalizedName,
+    email: normalizedEmail,
+    role: normalizedEmail === CANONICAL_ADMIN_EMAIL ? 'admin' : normalizedRole,
     bio:
       user?.bio?.trim() ||
       (normalizedRole === 'admin'
@@ -566,6 +585,34 @@ const normalizeUserRecord = (user) => {
     securityAnswer: user?.securityAnswer?.trim()?.toLowerCase() || ''
   };
 };
+
+const normalizeUserCollection = (users) => {
+  const normalizedUsers = users.map(normalizeUserRecord);
+  const hasCanonicalAdmin = normalizedUsers.some((user) => user.email === CANONICAL_ADMIN_EMAIL);
+
+  return normalizedUsers.filter((user, index) => {
+    if (user.email !== CANONICAL_ADMIN_EMAIL) {
+      return true;
+    }
+
+    if (!hasCanonicalAdmin) {
+      return true;
+    }
+
+    return normalizedUsers.findIndex((candidate) => candidate.email === CANONICAL_ADMIN_EMAIL) === index;
+  });
+};
+
+const getLegacyAdminIds = (...collections) =>
+  [
+    ...new Set(
+      collections
+        .flatMap((collection) => (Array.isArray(collection) ? collection : []))
+        .filter((user) => user?.email?.trim()?.toLowerCase() === LEGACY_ADMIN_EMAIL)
+        .map((user) => String(user.id || ''))
+        .filter((id) => id && id !== 'admin-1')
+    )
+  ];
 
 const buildSessionUser = (user) => {
   if (!user) {
@@ -584,13 +631,14 @@ const buildSessionUser = (user) => {
     profilePicture: normalizedUser.profilePicture,
     profileVisibility: normalizedUser.profileVisibility,
     role: normalizedUser.role,
+    updatedAt: normalizedUser.updatedAt || normalizedUser.joinedAt,
     yearLevel: normalizedUser.yearLevel
   };
 };
 
 const buildInitialUsers = (storedUsers) => {
   const nextUsers = Array.isArray(storedUsers) && storedUsers.length > 0 ? storedUsers : DEMO_USERS;
-  return nextUsers.map(normalizeUserRecord);
+  return normalizeUserCollection(nextUsers);
 };
 
 const buildInitialNotes = (storedNotes) =>
@@ -791,6 +839,11 @@ function App() {
         localDbValue: storedSnapshots[DB_KEYS.rooms].localValue,
         localStorageValue: localRooms
       });
+      const legacyAdminIds = getLegacyAdminIds(
+        localUsers,
+        storedSnapshots[DB_KEYS.users].localValue,
+        storedSnapshots[DB_KEYS.users].cloudValue
+      );
 
       const pendingWrites = [
         {
@@ -846,6 +899,12 @@ function App() {
         await Promise.all(pendingWrites);
       }
 
+      writeStorage(STORAGE_KEYS.users, nextUsers);
+
+      if (legacyAdminIds.length > 0) {
+        await Promise.all(legacyAdminIds.map((userId) => deleteDbItem(DB_KEYS.users, userId).catch(() => undefined)));
+      }
+
       await finishHydration(nextUsers, nextNotes, nextForumPosts, nextMessages, nextNotifications, nextReports, nextRooms);
     };
 
@@ -884,7 +943,7 @@ function App() {
     }
 
     writeDbValue(DB_KEYS.notes, notes).catch(() => {
-      window.localStorage.setItem(STORAGE_KEYS.notes, JSON.stringify(notes));
+      writeStorage(STORAGE_KEYS.notes, notes);
     });
   }, [isHydrating, notes]);
 
@@ -899,7 +958,7 @@ function App() {
     }
 
     writeDbValue(DB_KEYS.users, users).catch(() => {
-      window.localStorage.setItem(STORAGE_KEYS.users, JSON.stringify(users));
+      writeStorage(STORAGE_KEYS.users, users);
     });
   }, [isHydrating, users]);
 
@@ -914,7 +973,7 @@ function App() {
     }
 
     writeDbValue(DB_KEYS.forum, forumPosts).catch(() => {
-      window.localStorage.setItem(STORAGE_KEYS.forum, JSON.stringify(forumPosts));
+      writeStorage(STORAGE_KEYS.forum, forumPosts);
     });
   }, [isHydrating, forumPosts]);
 
@@ -929,7 +988,7 @@ function App() {
     }
 
     writeDbValue(DB_KEYS.messages, messages).catch(() => {
-      window.localStorage.setItem(STORAGE_KEYS.messages, JSON.stringify(messages));
+      writeStorage(STORAGE_KEYS.messages, messages);
     });
   }, [isHydrating, messages]);
 
@@ -944,7 +1003,7 @@ function App() {
     }
 
     writeDbValue(DB_KEYS.notifications, notifications).catch(() => {
-      window.localStorage.setItem(STORAGE_KEYS.notifications, JSON.stringify(notifications));
+      writeStorage(STORAGE_KEYS.notifications, notifications);
     });
   }, [isHydrating, notifications]);
 
@@ -959,7 +1018,7 @@ function App() {
     }
 
     writeDbValue(DB_KEYS.reports, reports).catch(() => {
-      window.localStorage.setItem(STORAGE_KEYS.reports, JSON.stringify(reports));
+      writeStorage(STORAGE_KEYS.reports, reports);
     });
   }, [isHydrating, reports]);
 
@@ -974,20 +1033,20 @@ function App() {
     }
 
     writeDbValue(DB_KEYS.rooms, rooms).catch(() => {
-      window.localStorage.setItem(STORAGE_KEYS.rooms, JSON.stringify(rooms));
+      writeStorage(STORAGE_KEYS.rooms, rooms);
     });
   }, [isHydrating, rooms]);
 
   useEffect(() => {
     if (currentUser) {
-      window.localStorage.setItem(STORAGE_KEYS.user, JSON.stringify(currentUser));
+      writeStorage(STORAGE_KEYS.user, currentUser);
     } else {
       window.localStorage.removeItem(STORAGE_KEYS.user);
     }
   }, [currentUser]);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEYS.theme, JSON.stringify(theme));
+    writeStorage(STORAGE_KEYS.theme, theme);
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
@@ -1012,6 +1071,11 @@ function App() {
   const currentUserRecord = useMemo(
     () => users.find((user) => user.id === currentUser?.id) || null,
     [currentUser, users]
+  );
+
+  const currentUserForDisplay = useMemo(
+    () => (currentUserRecord ? buildSessionUser(currentUserRecord) : currentUser),
+    [currentUser, currentUserRecord]
   );
 
   const publicNotes = useMemo(
@@ -1268,6 +1332,7 @@ function App() {
       };
     }
 
+    const updatedAt = new Date().toISOString();
     const nextUser = normalizeUserRecord({
       ...currentUserRecord,
       name: profileInput.name?.trim() || currentUserRecord.name,
@@ -1275,10 +1340,17 @@ function App() {
       course: profileInput.course ?? currentUserRecord.course,
       yearLevel: profileInput.yearLevel ?? currentUserRecord.yearLevel,
       profileVisibility: profileInput.profileVisibility || currentUserRecord.profileVisibility,
-      profilePicture: profileInput.profilePicture || currentUserRecord.profilePicture
+      profilePicture: profileInput.profilePicture || currentUserRecord.profilePicture,
+      updatedAt
     });
 
-    setUsers((previousUsers) => previousUsers.map((user) => (user.id === nextUser.id ? nextUser : user)));
+    const nextUsers = users.map((user) => (user.id === nextUser.id ? nextUser : user));
+
+    setUsers(nextUsers);
+    writeStorage(STORAGE_KEYS.users, nextUsers);
+    writeDbValue(DB_KEYS.users, nextUsers).catch(() => {
+      writeStorage(STORAGE_KEYS.users, nextUsers);
+    });
     setNotes((previousNotes) =>
       previousNotes.map((note) =>
         note.uploaderId === nextUser.id
@@ -1327,13 +1399,28 @@ function App() {
       return;
     }
 
+    const updatedAt = new Date().toISOString();
+
     setCurrentUser((previousUser) =>
       previousUser
         ? {
             ...previousUser,
-            profilePicture
+            profilePicture,
+            updatedAt
           }
         : previousUser
+    );
+
+    setUsers((previousUsers) =>
+      previousUsers.map((user) =>
+        user.id === currentUser.id
+          ? normalizeUserRecord({
+              ...user,
+              profilePicture,
+              updatedAt
+            })
+          : user
+      )
     );
   };
 
@@ -1747,7 +1834,8 @@ function App() {
       text: trimmedText,
       createdAt: now,
       updatedAt: now,
-      readBy: [currentUser.id]
+      readBy: [currentUser.id],
+      deletedFor: []
     };
 
     setMessages((previousMessages) => [nextMessage, ...previousMessages]);
@@ -1795,7 +1883,8 @@ function App() {
       text: trimmedText,
       createdAt: now,
       updatedAt: now,
-      readBy: [currentUser.id]
+      readBy: [currentUser.id],
+      deletedFor: []
     };
 
     setMessages((previousMessages) => [nextMessage, ...previousMessages]);
@@ -1811,17 +1900,68 @@ function App() {
       return;
     }
 
+    setMessages((previousMessages) => {
+      let hasChanged = false;
+
+      const nextMessages = previousMessages.map((message) => {
+        const readBy = Array.isArray(message.readBy) ? message.readBy : [];
+
+        if (message.conversationKey !== conversationKey || readBy.includes(currentUser.id)) {
+          return message;
+        }
+
+        hasChanged = true;
+
+        return {
+          ...message,
+          readBy: [...readBy, currentUser.id],
+          updatedAt: new Date().toISOString()
+        };
+      });
+
+      return hasChanged ? nextMessages : previousMessages;
+    });
+  };
+
+  const handleDeleteDirectConversation = (conversationKey) => {
+    if (!currentUser || !conversationKey) {
+      return {
+        success: false,
+        message: 'Please choose a conversation first.'
+      };
+    }
+
+    const now = new Date().toISOString();
+
     setMessages((previousMessages) =>
-      previousMessages.map((message) =>
-        message.conversationKey === conversationKey && !message.readBy.includes(currentUser.id)
-          ? {
-              ...message,
-              readBy: [...message.readBy, currentUser.id],
-              updatedAt: message.updatedAt || message.createdAt
-            }
-          : message
-      )
+      previousMessages.map((message) => {
+        if (
+          message.type !== 'direct' ||
+          message.conversationKey !== conversationKey ||
+          !(message.participants || []).includes(currentUser.id)
+        ) {
+          return message;
+        }
+
+        if ((message.deletedFor || []).includes(currentUser.id)) {
+          return message;
+        }
+
+        return {
+          ...message,
+          deletedFor: [...(message.deletedFor || []), currentUser.id],
+          readBy: (message.readBy || []).includes(currentUser.id)
+            ? message.readBy || []
+            : [...(message.readBy || []), currentUser.id],
+          updatedAt: now
+        };
+      })
     );
+
+    return {
+      success: true,
+      message: 'Conversation deleted.'
+    };
   };
 
   const handleMarkRoomMessagesRead = (roomId) => {
@@ -2258,7 +2398,7 @@ function App() {
   return (
     <div className="app">
       <Navbar
-        currentUser={currentUser}
+        currentUser={currentUserForDisplay}
         onLogout={handleLogout}
         theme={theme}
         onToggleTheme={toggleTheme}
@@ -2303,6 +2443,7 @@ function App() {
                 messages={messages}
                 onSendDirectMessage={handleSendDirectMessage}
                 onMarkConversationRead={handleMarkConversationRead}
+                onDeleteDirectConversation={handleDeleteDirectConversation}
               />
             }
           />

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import AttachmentGallery from '../components/AttachmentGallery';
 import UserAvatar from '../components/UserAvatar';
 
@@ -22,6 +22,7 @@ const formatDate = (dateValue) =>
 const NoteDetailsPage = ({ notes, users, currentUser, onToggleLike, onDelete, onEdit, onSubmitReview, onReport }) => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const note = notes.find((item) => item.id === Number(id));
   const [reviewForm, setReviewForm] = useState({ rating: '5', text: '' });
   const ratingOptions = [1, 2, 3, 4, 5];
@@ -30,6 +31,7 @@ const NoteDetailsPage = ({ notes, users, currentUser, onToggleLike, onDelete, on
   const isUploader = note && currentUser && note.uploaderId === currentUser.id;
   const liked = note && currentUser ? note.likes.includes(currentUser.id) : false;
   const uploader = users.find((user) => user.id === note?.uploaderId) || null;
+  const backTo = location.state?.from || '/browse';
 
   const averageRating = useMemo(() => {
     if (!note || note.reviews.length === 0) {
@@ -67,7 +69,7 @@ const NoteDetailsPage = ({ notes, users, currentUser, onToggleLike, onDelete, on
   return (
     <div className="page">
       <div className="note-header">
-        <Link to="/browse" className="back-btn-small">Back</Link>
+        <Link to={backTo} className="back-btn-small">Back</Link>
         <div className="note-title-info">
           <div className="note-badge-row">
             <div className="note-badge-row-copy">

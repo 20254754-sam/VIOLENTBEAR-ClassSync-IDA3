@@ -4,6 +4,8 @@ const DB_NAME = 'classsync-db';
 const DB_VERSION = 1;
 const STORE_NAME = 'app_state';
 const LEGACY_CLOUD_TABLE = 'app_state';
+const CLOUD_READ_TIMEOUT_MS = 4500;
+const CLOUD_WRITE_TIMEOUT_MS = 4500;
 
 const CLOUD_TABLES = {
   forum: 'classsync_forum_posts',
@@ -16,6 +18,14 @@ const CLOUD_TABLES = {
 };
 
 let dbPromise = null;
+
+const withTimeout = (promise, timeoutMs, message) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    })
+  ]);
 
 const openDatabase = () => {
   if (!('indexedDB' in window)) {
@@ -248,7 +258,11 @@ export const writeDbValue = async (key, value) => {
   await writeLocalDbValue(key, value);
 
   if (isSupabaseConfigured) {
-    await writeCloudDbValue(key, value);
+    await withTimeout(
+      writeCloudDbValue(key, value),
+      CLOUD_WRITE_TIMEOUT_MS,
+      `Cloud write timed out for ${key}.`
+    );
   }
 };
 
@@ -256,7 +270,11 @@ export const deleteDbItem = async (key, itemId) => {
   await deleteLocalDbItem(key, itemId);
 
   if (isSupabaseConfigured && getCloudTable(key)) {
-    await deleteCloudCollectionItem(key, itemId);
+    await withTimeout(
+      deleteCloudCollectionItem(key, itemId),
+      CLOUD_WRITE_TIMEOUT_MS,
+      `Cloud delete timed out for ${key}.`
+    );
   }
 };
 
@@ -270,7 +288,11 @@ export const readManyDbValues = async (entries) => {
 };
 
 export const readDbSnapshot = async (key) => {
-  const localValue = await readLocalDbValue(key, undefined);
+  const localValue = await withTimeout(
+    readLocalDbValue(key, undefined),
+    CLOUD_READ_TIMEOUT_MS,
+    `Local read timed out for ${key}.`
+  ).catch(() => undefined);
 
   if (!isSupabaseConfigured) {
     return {
@@ -282,7 +304,11 @@ export const readDbSnapshot = async (key) => {
   }
 
   try {
-    const cloudValue = await readCloudDbValue(key, undefined);
+    const cloudValue = await withTimeout(
+      readCloudDbValue(key, undefined),
+      CLOUD_READ_TIMEOUT_MS,
+      `Cloud read timed out for ${key}.`
+    );
 
     if (cloudValue !== undefined) {
       await writeLocalDbValue(key, cloudValue);

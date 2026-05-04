@@ -21,6 +21,22 @@ const toArray = (value) => (Array.isArray(value) ? value : []);
 
 const getItemId = (item) => String(item?.id ?? '');
 
+const restoreDataset = async (label, key, value) => {
+  try {
+    await writeDbValue(key, value);
+    return {
+      label,
+      success: true
+    };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : 'Unknown Supabase write error.',
+      label,
+      success: false
+    };
+  }
+};
+
 const RecoveryPage = ({ storageKeys, dbKeys, seedUsers, seedForumPosts }) => {
   const [scanState, setScanState] = useState({
     error: '',
@@ -138,12 +154,14 @@ const RecoveryPage = ({ storageKeys, dbKeys, seedUsers, seedForumPosts }) => {
       restoreMessage: ''
     }));
 
-    try {
-      await Promise.all([
-        writeDbValue(dbKeys.users, preferredUsers),
-        writeDbValue(dbKeys.forum, preferredForum)
-      ]);
+    const restoreResults = await Promise.all([
+      restoreDataset('accounts', dbKeys.users, preferredUsers),
+      restoreDataset('forum posts', dbKeys.forum, preferredForum)
+    ]);
 
+    const failedRestores = restoreResults.filter((result) => !result.success);
+
+    if (failedRestores.length === 0) {
       setScanState((currentState) => ({
         ...currentState,
         isRestoring: false,
@@ -151,13 +169,18 @@ const RecoveryPage = ({ storageKeys, dbKeys, seedUsers, seedForumPosts }) => {
       }));
 
       await runScan();
-    } catch (error) {
-      setScanState((currentState) => ({
-        ...currentState,
-        error: error instanceof Error ? error.message : 'Unable to restore this browser data to Supabase.',
-        isRestoring: false
-      }));
+      return;
     }
+
+    const failureMessage = failedRestores
+      .map((result) => `${result.label}: ${result.error}`)
+      .join(' ');
+
+    setScanState((currentState) => ({
+      ...currentState,
+      error: `Unable to restore this browser data to Supabase. ${failureMessage}`,
+      isRestoring: false
+    }));
   };
 
   const copyReport = async () => {
@@ -202,25 +225,66 @@ const RecoveryPage = ({ storageKeys, dbKeys, seedUsers, seedForumPosts }) => {
         {scanState.report && (
           <>
             <div className={`recovery-status ${hasRecoverableData ? 'recovery-status-good' : 'recovery-status-empty'}`}>
+              <span className="recovery-status-orb" aria-hidden="true" />
               <strong>{hasRecoverableData ? 'Recoverable data found on this browser.' : 'No extra local data found here.'}</strong>
               <span>Scanned at {formatUpdatedAt(scanState.report.scannedAt)}</span>
             </div>
 
             <div className="recovery-grid">
               <section className="recovery-panel">
-                <h2>Accounts</h2>
-                <p>LocalStorage: {scanState.report.users.localStorageCount}</p>
-                <p>IndexedDB: {scanState.report.users.indexedDbCount}</p>
-                <p>Supabase: {scanState.report.users.cloudCount}</p>
-                <p>Extra local accounts: {Math.max(scanState.report.users.extraLocalStorageCount, scanState.report.users.extraIndexedDbCount)}</p>
+                <div className="recovery-panel-heading">
+                  <span className="recovery-panel-icon" aria-hidden="true">ID</span>
+                  <div>
+                    <h2>Accounts</h2>
+                    <p>User records found across storage sources.</p>
+                  </div>
+                </div>
+                <div className="recovery-metric-grid">
+                  <div className="recovery-metric">
+                    <span>LocalStorage</span>
+                    <strong>{scanState.report.users.localStorageCount}</strong>
+                  </div>
+                  <div className="recovery-metric">
+                    <span>IndexedDB</span>
+                    <strong>{scanState.report.users.indexedDbCount}</strong>
+                  </div>
+                  <div className="recovery-metric">
+                    <span>Supabase</span>
+                    <strong>{scanState.report.users.cloudCount}</strong>
+                  </div>
+                  <div className="recovery-metric recovery-metric-highlight">
+                    <span>Extra local</span>
+                    <strong>{Math.max(scanState.report.users.extraLocalStorageCount, scanState.report.users.extraIndexedDbCount)}</strong>
+                  </div>
+                </div>
               </section>
 
               <section className="recovery-panel">
-                <h2>Forum posts</h2>
-                <p>LocalStorage: {scanState.report.forum.localStorageCount}</p>
-                <p>IndexedDB: {scanState.report.forum.indexedDbCount}</p>
-                <p>Supabase: {scanState.report.forum.cloudCount}</p>
-                <p>Extra local posts: {Math.max(scanState.report.forum.extraLocalStorageCount, scanState.report.forum.extraIndexedDbCount)}</p>
+                <div className="recovery-panel-heading">
+                  <span className="recovery-panel-icon recovery-panel-icon-warm" aria-hidden="true">PX</span>
+                  <div>
+                    <h2>Forum posts</h2>
+                    <p>Discussion records available for restore.</p>
+                  </div>
+                </div>
+                <div className="recovery-metric-grid">
+                  <div className="recovery-metric">
+                    <span>LocalStorage</span>
+                    <strong>{scanState.report.forum.localStorageCount}</strong>
+                  </div>
+                  <div className="recovery-metric">
+                    <span>IndexedDB</span>
+                    <strong>{scanState.report.forum.indexedDbCount}</strong>
+                  </div>
+                  <div className="recovery-metric">
+                    <span>Supabase</span>
+                    <strong>{scanState.report.forum.cloudCount}</strong>
+                  </div>
+                  <div className="recovery-metric recovery-metric-highlight">
+                    <span>Extra local</span>
+                    <strong>{Math.max(scanState.report.forum.extraLocalStorageCount, scanState.report.forum.extraIndexedDbCount)}</strong>
+                  </div>
+                </div>
               </section>
             </div>
 

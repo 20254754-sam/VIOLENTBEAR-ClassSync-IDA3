@@ -2,18 +2,97 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import BrandLogo from '../components/BrandLogo';
 
+const GAME_BOARD_SIZE = 8;
+
 const backgroundNotes = [
-  { className: 'auth-note-one', x: 0.12, y: 0.2, color: 'rgba(91, 116, 214, 0.62)' },
-  { className: 'auth-note-two', x: -0.14, y: 0.1, color: 'rgba(240, 139, 168, 0.6)' },
-  { className: 'auth-note-three', x: 0.08, y: -0.12, color: 'rgba(123, 99, 210, 0.58)' },
-  { className: 'auth-note-four', x: -0.12, y: -0.08, color: 'rgba(125, 145, 230, 0.62)' },
-  { className: 'auth-note-five', x: 0.16, y: 0.06, color: 'rgba(91, 116, 214, 0.58)' },
-  { className: 'auth-note-six', x: -0.08, y: 0.15, color: 'rgba(240, 139, 168, 0.56)' },
-  { className: 'auth-note-seven', x: 0.1, y: -0.16, color: 'rgba(123, 99, 210, 0.54)' },
-  { className: 'auth-note-eight', x: -0.15, y: 0.12, color: 'rgba(125, 145, 230, 0.58)' }
+  { className: 'auth-note-one', x: 0.12, y: 0.2, color: 'rgba(78, 110, 216, 0.58)' },
+  { className: 'auth-note-two', x: -0.14, y: 0.1, color: 'rgba(240, 139, 168, 0.58)' },
+  { className: 'auth-note-three', x: 0.08, y: -0.12, color: 'rgba(106, 99, 210, 0.56)' },
+  { className: 'auth-note-four', x: -0.12, y: -0.08, color: 'rgba(244, 211, 155, 0.62)' },
+  { className: 'auth-note-five', x: 0.16, y: 0.06, color: 'rgba(91, 116, 214, 0.54)' },
+  { className: 'auth-note-six', x: -0.08, y: 0.15, color: 'rgba(240, 139, 168, 0.54)' },
+  { className: 'auth-note-seven', x: 0.1, y: -0.16, color: 'rgba(106, 99, 210, 0.52)' },
+  { className: 'auth-note-eight', x: -0.15, y: 0.12, color: 'rgba(255, 240, 201, 0.64)' }
 ];
 
 const getEmailPrefix = (value) => value.replace(/@classsync\.com$/i, '').replace(/\s+/g, '');
+
+const blockPieces = [
+  { id: 'single', cells: [[0, 0]], color: 'var(--accent)' },
+  { id: 'line2', cells: [[0, 0], [1, 0]], color: 'var(--accent-strong)' },
+  { id: 'line3', cells: [[0, 0], [1, 0], [2, 0]], color: 'var(--accent)' },
+  { id: 'stack3', cells: [[0, 0], [0, 1], [0, 2]], color: 'var(--accent-warm)' },
+  { id: 'square', cells: [[0, 0], [1, 0], [0, 1], [1, 1]], color: 'var(--accent-strong)' },
+  { id: 'corner', cells: [[0, 0], [0, 1], [1, 1]], color: 'var(--accent-warm)' },
+  { id: 't', cells: [[0, 0], [1, 0], [2, 0], [1, 1]], color: 'var(--accent)' }
+];
+
+const createEmptyBoard = () =>
+  Array.from({ length: GAME_BOARD_SIZE }, () => Array.from({ length: GAME_BOARD_SIZE }, () => null));
+
+const getPieceFootprint = (piece) => ({
+  width: Math.max(...piece.cells.map(([x]) => x)) + 1,
+  height: Math.max(...piece.cells.map(([, y]) => y)) + 1
+});
+
+const getNextPieces = (offset = 0) => {
+  const start = offset % blockPieces.length;
+  return [blockPieces[start], blockPieces[(start + 2) % blockPieces.length], blockPieces[(start + 4) % blockPieces.length]];
+};
+
+const canPlacePiece = (board, piece, row, col) =>
+  piece.cells.every(([x, y]) => {
+    const targetRow = row + y;
+    const targetCol = col + x;
+
+    return (
+      targetRow >= 0 &&
+      targetRow < GAME_BOARD_SIZE &&
+      targetCol >= 0 &&
+      targetCol < GAME_BOARD_SIZE &&
+      !board[targetRow][targetCol]
+    );
+  });
+
+const placePieceOnBoard = (board, piece, row, col) => {
+  const nextBoard = board.map((boardRow) => [...boardRow]);
+
+  piece.cells.forEach(([x, y]) => {
+    nextBoard[row + y][col + x] = piece.color;
+  });
+
+  return nextBoard;
+};
+
+const clearCompletedLines = (board) => {
+  const rowsToClear = new Set();
+  const colsToClear = new Set();
+
+  board.forEach((row, rowIndex) => {
+    if (row.every(Boolean)) {
+      rowsToClear.add(rowIndex);
+    }
+  });
+
+  for (let colIndex = 0; colIndex < GAME_BOARD_SIZE; colIndex += 1) {
+    if (board.every((row) => row[colIndex])) {
+      colsToClear.add(colIndex);
+    }
+  }
+
+  if (!rowsToClear.size && !colsToClear.size) {
+    return { board, cleared: 0, rowsToClear, colsToClear };
+  }
+
+  return {
+    board: board.map((row, rowIndex) =>
+      row.map((cell, colIndex) => (rowsToClear.has(rowIndex) || colsToClear.has(colIndex) ? null : cell))
+    ),
+    cleared: rowsToClear.size + colsToClear.size,
+    rowsToClear,
+    colsToClear
+  };
+};
 
 const BookGlyph = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -71,6 +150,250 @@ const EmailField = ({ id, label, value, onChange, placeholder = 'username' }) =>
   </div>
 );
 
+const ClassBlocksGame = ({ onExit }) => {
+  const [started, setStarted] = useState(false);
+  const [board, setBoard] = useState(() => createEmptyBoard());
+  const [pieces, setPieces] = useState(() => getNextPieces());
+  const [draggedPieceId, setDraggedPieceId] = useState(null);
+  const [dragPosition, setDragPosition] = useState(null);
+  const [clearingCells, setClearingCells] = useState(() => new Set());
+  const [isClearing, setIsClearing] = useState(false);
+  const [score, setScore] = useState(0);
+  const [pieceOffset, setPieceOffset] = useState(0);
+  const [message, setMessage] = useState('Pop five books to unlock. Ready when you are.');
+  const draggedPiece = pieces.find((piece) => piece.id === draggedPieceId);
+
+  const resetGame = () => {
+    setStarted(true);
+    setBoard(createEmptyBoard());
+    setPieces(getNextPieces(0));
+    setDraggedPieceId(null);
+    setDragPosition(null);
+    setClearingCells(new Set());
+    setIsClearing(false);
+    setScore(0);
+    setPieceOffset(0);
+    setMessage('Drag a piece onto the board.');
+  };
+
+  const finishPieceTurn = (remainingPieces, cleared, clearedBoard) => {
+    if (remainingPieces.length) {
+      setPieces(remainingPieces);
+      setMessage(cleared ? `Line cleared! +${cleared * 100}` : 'Nice drop.');
+      return;
+    }
+
+    const nextOffset = pieceOffset + 1;
+    setPieceOffset(nextOffset);
+    setPieces(getNextPieces(nextOffset));
+    setMessage(cleared ? `Fresh pieces. Cleared ${cleared} line${cleared > 1 ? 's' : ''}!` : 'Fresh pieces!');
+    setBoard(clearedBoard);
+  };
+
+  const handlePlacePiece = (piece, row, col) => {
+    if (!started) {
+      setMessage('Press Start to play.');
+      return;
+    }
+
+    if (isClearing) {
+      setMessage('Wait for the line to clear.');
+      return;
+    }
+
+    if (!piece) {
+      setMessage('Drag a piece onto the board.');
+      return;
+    }
+
+    if (!canPlacePiece(board, piece, row, col)) {
+      setMessage('That piece does not fit there.');
+      return;
+    }
+
+    const placedBoard = placePieceOnBoard(board, piece, row, col);
+    const { board: clearedBoard, cleared, rowsToClear, colsToClear } = clearCompletedLines(placedBoard);
+    const remainingPieces = pieces.filter((currentPiece) => currentPiece.id !== piece.id);
+    const placedScore = piece.cells.length * 10 + cleared * 100;
+
+    setScore((current) => current + placedScore);
+    setDraggedPieceId(null);
+    setDragPosition(null);
+
+    if (!cleared) {
+      setBoard(clearedBoard);
+      finishPieceTurn(remainingPieces, cleared, clearedBoard);
+      return;
+    }
+
+    const nextClearingCells = new Set();
+    rowsToClear.forEach((rowIndex) => {
+      for (let colIndex = 0; colIndex < GAME_BOARD_SIZE; colIndex += 1) {
+        nextClearingCells.add(`${rowIndex}-${colIndex}`);
+      }
+    });
+    colsToClear.forEach((colIndex) => {
+      for (let rowIndex = 0; rowIndex < GAME_BOARD_SIZE; rowIndex += 1) {
+        nextClearingCells.add(`${rowIndex}-${colIndex}`);
+      }
+    });
+
+    setBoard(placedBoard);
+    setPieces(remainingPieces);
+    setClearingCells(nextClearingCells);
+    setIsClearing(true);
+    setMessage(`Line cleared! +${cleared * 100}`);
+
+    window.setTimeout(() => {
+      setBoard(clearedBoard);
+      setClearingCells(new Set());
+      setIsClearing(false);
+      finishPieceTurn(remainingPieces, cleared, clearedBoard);
+    }, 520);
+  };
+
+  const handlePiecePointerDown = (event, piece) => {
+    if (!started || isClearing) {
+      setMessage(started ? 'Wait for the line to clear.' : 'Press Start to play.');
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    setDraggedPieceId(piece.id);
+    setDragPosition({ x: event.clientX, y: event.clientY });
+    setMessage('Drop the piece onto the board.');
+  };
+
+  const handlePiecePointerMove = (event) => {
+    if (!draggedPieceId) {
+      return;
+    }
+
+    setDragPosition({ x: event.clientX, y: event.clientY });
+  };
+
+  const handlePiecePointerUp = (event) => {
+    if (!draggedPiece) {
+      return;
+    }
+
+    const dropTarget = document
+      .elementFromPoint(event.clientX, event.clientY)
+      ?.closest?.('.classblocks-cell');
+
+    if (!dropTarget) {
+      setDraggedPieceId(null);
+      setDragPosition(null);
+      setMessage('Drop it on the board.');
+      return;
+    }
+
+    handlePlacePiece(draggedPiece, Number(dropTarget.dataset.row), Number(dropTarget.dataset.col));
+  };
+
+  return (
+    <section className="classblocks-panel" aria-label="ClassBlocks mini game">
+      <div className="classblocks-header">
+        <div>
+          <p className="auth-eyebrow">Unlocked mini game</p>
+          <h2>ClassBlocks</h2>
+        </div>
+        <div className="classblocks-header-actions">
+          <strong>{score}</strong>
+          <button type="button" className="classblocks-exit-button" onClick={onExit}>
+            Back to login
+          </button>
+        </div>
+      </div>
+      <p className="classblocks-message">{message}</p>
+
+      <div className="classblocks-board" aria-label="ClassBlocks board">
+        {board.map((row, rowIndex) =>
+          row.map((cell, colIndex) => (
+            <button
+              key={`${rowIndex}-${colIndex}`}
+              type="button"
+              className={`classblocks-cell ${cell ? 'classblocks-cell-filled' : ''} ${
+                clearingCells.has(`${rowIndex}-${colIndex}`) ? 'classblocks-cell-clearing' : ''
+              }`}
+              data-row={rowIndex}
+              data-col={colIndex}
+              style={cell ? { '--block-color': cell } : undefined}
+              aria-label={`Board square row ${rowIndex + 1}, column ${colIndex + 1}`}
+            />
+          ))
+        )}
+      </div>
+
+      <div className="classblocks-pieces" aria-label="Available block pieces">
+        {pieces.map((piece) => {
+          const footprint = getPieceFootprint(piece);
+
+          return (
+            <button
+              key={piece.id}
+              type="button"
+              className={`classblocks-piece ${draggedPieceId === piece.id ? 'classblocks-piece-active' : ''}`}
+              style={{
+                '--piece-color': piece.color,
+                '--piece-cols': footprint.width,
+                '--piece-rows': footprint.height
+              }}
+              onPointerDown={(event) => handlePiecePointerDown(event, piece)}
+              onPointerMove={handlePiecePointerMove}
+              onPointerUp={handlePiecePointerUp}
+              onPointerCancel={() => {
+                setDraggedPieceId(null);
+                setDragPosition(null);
+              }}
+              disabled={!started || isClearing}
+              aria-label={`Select ${piece.id} piece`}
+            >
+              {Array.from({ length: footprint.width * footprint.height }).map((_, index) => {
+                const x = index % footprint.width;
+                const y = Math.floor(index / footprint.width);
+                const isFilled = piece.cells.some(([cellX, cellY]) => cellX === x && cellY === y);
+
+                return <span key={index} className={isFilled ? 'classblocks-piece-dot' : 'classblocks-piece-gap'} />;
+              })}
+            </button>
+          );
+        })}
+      </div>
+
+      {draggedPiece && dragPosition && (
+        <div
+          className="classblocks-drag-preview"
+          style={{
+            '--piece-color': draggedPiece.color,
+            '--piece-cols': getPieceFootprint(draggedPiece).width,
+            '--piece-rows': getPieceFootprint(draggedPiece).height,
+            left: dragPosition.x,
+            top: dragPosition.y
+          }}
+          aria-hidden="true"
+        >
+          {Array.from({ length: getPieceFootprint(draggedPiece).width * getPieceFootprint(draggedPiece).height }).map(
+            (_, index) => {
+              const footprint = getPieceFootprint(draggedPiece);
+              const x = index % footprint.width;
+              const y = Math.floor(index / footprint.width);
+              const isFilled = draggedPiece.cells.some(([cellX, cellY]) => cellX === x && cellY === y);
+
+              return <span key={index} className={isFilled ? 'classblocks-piece-dot' : 'classblocks-piece-gap'} />;
+            }
+          )}
+        </div>
+      )}
+
+      <button type="button" className="auth-submit-button classblocks-start" onClick={resetGame}>
+        {started ? 'Restart game' : 'Start game'}
+      </button>
+    </section>
+  );
+};
+
 const LoginPage = ({
   onLogin,
   onRegister,
@@ -109,6 +432,8 @@ const LoginPage = ({
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [showAdditionalInfo, setShowAdditionalInfo] = useState(false);
+  const [poppedBooks, setPoppedBooks] = useState([]);
+  const [isGameUnlocked, setIsGameUnlocked] = useState(false);
   const shellRef = useRef(null);
   const cardRef = useRef(null);
   const panelsRef = useRef(null);
@@ -166,6 +491,10 @@ const LoginPage = ({
   }, []);
 
   useEffect(() => {
+    if (isGameUnlocked) {
+      return undefined;
+    }
+
     const panels = panelsRef.current;
     const activeForm = mode === 'login' ? loginFormRef.current : registerFormRef.current;
 
@@ -188,7 +517,17 @@ const LoginPage = ({
     return () => {
       resizeObserver.disconnect();
     };
-  }, [mode, feedback, registerForm, credentials, showForgotPassword, showAdditionalInfo, forgotPasswordForm, recoveryQuestion]);
+  }, [
+    mode,
+    feedback,
+    registerForm,
+    credentials,
+    showForgotPassword,
+    showAdditionalInfo,
+    forgotPasswordForm,
+    recoveryQuestion,
+    isGameUnlocked
+  ]);
 
   const handleLoginSubmit = (event) => {
     event.preventDefault();
@@ -225,31 +564,56 @@ const LoginPage = ({
     }
   };
 
+  const handlePopBook = (bookClassName) => {
+    setPoppedBooks((current) => {
+      if (current.includes(bookClassName)) {
+        return current;
+      }
+
+      const next = [...current, bookClassName];
+
+      if (next.length >= 5) {
+        window.setTimeout(() => {
+          setIsGameUnlocked(true);
+          setFeedback('');
+        }, 260);
+      }
+
+      return next;
+    });
+  };
+
   return (
     <div ref={shellRef} className="auth-shell">
       <button type="button" className="auth-theme-toggle auth-theme-toggle-compact" onClick={onToggleTheme}>
         {theme === 'dark' ? '☀' : '☾'}
       </button>
 
-      <div className="auth-background" aria-hidden="true">
+      <div className="auth-background">
         <span className="auth-orb auth-orb-one" />
         <span className="auth-orb auth-orb-two" />
         <span className="auth-orb auth-orb-three" />
         {backgroundNotes.map((note) => (
-          <span
+          <button
+            type="button"
             key={note.className}
-            className={`auth-note-layer ${note.className}`}
+            className={`auth-note-layer ${note.className} ${
+              poppedBooks.includes(note.className) ? 'auth-note-layer-popped' : ''
+            }`}
             style={{
               '--note-pull-x': note.x,
               '--note-pull-y': note.y,
               '--note-color': note.color
             }}
+            onClick={() => handlePopBook(note.className)}
+            aria-label="Pop floating book"
+            disabled={poppedBooks.includes(note.className) || isGameUnlocked}
           >
             <span className="auth-note auth-note-desktop">📘</span>
             <span className="auth-note auth-note-mobile">
               <BookGlyph />
             </span>
-          </span>
+          </button>
         ))}
       </div>
 
@@ -275,7 +639,16 @@ const LoginPage = ({
           </div>
         </div>
 
-        <div className="auth-panel-shell">
+        <div className={`auth-panel-shell ${isGameUnlocked ? 'auth-panel-shell-game' : ''}`}>
+          {isGameUnlocked && (
+            <ClassBlocksGame
+              onExit={() => {
+                setIsGameUnlocked(false);
+                setPoppedBooks([]);
+              }}
+            />
+          )}
+
           <div className="auth-mode-switch">
             <button
               type="button"

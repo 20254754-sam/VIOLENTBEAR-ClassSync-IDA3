@@ -192,7 +192,7 @@ const AdminPage = ({
                 </div>
 
                 <div className="admin-review-actions admin-review-actions-sticky">
-                  <Link to={`/note/${note.id}`} className="card-link-button">
+                  <Link to={`/note/${note.id}`} state={{ from: '/admin' }} className="card-link-button">
                     View full note
                   </Link>
                   <button type="button" className="secondary-button" onClick={() => onApprove(note.id)}>
@@ -241,7 +241,11 @@ const AdminPage = ({
                 <p className="admin-report-reason">{report.reason}</p>
                 <div className="admin-review-actions">
                   {report.targetType === 'note' ? (
-                    <Link to={report.roomId ? `/rooms/${report.roomId}/note/${report.targetId}` : `/note/${report.targetId}`} className="card-link-button">
+                    <Link
+                      to={report.roomId ? `/rooms/${report.roomId}/note/${report.targetId}` : `/note/${report.targetId}`}
+                      state={{ from: '/admin' }}
+                      className="card-link-button"
+                    >
                       Open reported note
                     </Link>
                   ) : (

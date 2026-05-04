@@ -10,14 +10,41 @@ const formatMessageTime = (dateValue) =>
     minute: '2-digit'
   });
 
+const formatConversationTime = (dateValue) => {
+  const value = new Date(dateValue);
+  const now = new Date();
+  const sameDay = value.toDateString() === now.toDateString();
+
+  if (sameDay) {
+    return value.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+  }
+
+  return value.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric'
+  });
+};
+
 const buildConversationKey = (firstUserId, secondUserId) =>
   `direct:${[firstUserId, secondUserId].map(String).sort().join(':')}`;
 
-const MessagesPage = ({ currentUser, users, messages, onSendDirectMessage, onMarkConversationRead }) => {
+const MessagesPage = ({
+  currentUser,
+  users,
+  messages,
+  onSendDirectMessage,
+  onMarkConversationRead,
+  onDeleteDirectConversation
+}) => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const routeUserId = searchParams.get('user') || '';
+  const [activeUserId, setActiveUserId] = useState(routeUserId);
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState('');
-  const selectedUserId = searchParams.get('user') || '';
+  const selectedUserId = activeUserId;
   const threadRef = React.useRef(null);
 
   const directContacts = useMemo(
@@ -32,17 +59,22 @@ const MessagesPage = ({ currentUser, users, messages, onSendDirectMessage, onMar
       return [];
     }
 
-    return directContacts.filter((user) =>
-      user.name.toLowerCase().includes(normalizedQuery) ||
-      user.email.toLowerCase().includes(normalizedQuery) ||
-      user.course.toLowerCase().includes(normalizedQuery)
-    );
+    return directContacts
+      .filter((user) =>
+        (user.name || '').toLowerCase().includes(normalizedQuery) ||
+        (user.email || '').toLowerCase().includes(normalizedQuery) ||
+        (user.course || '').toLowerCase().includes(normalizedQuery)
+      )
+      .sort((firstUser, secondUser) => firstUser.name.localeCompare(secondUser.name));
   }, [directContacts, query]);
 
   const directMessages = useMemo(
     () =>
       messages.filter(
-        (message) => message.type === 'direct' && message.participants.includes(currentUser.id)
+        (message) =>
+          message.type === 'direct' &&
+          (message.participants || []).includes(currentUser.id) &&
+          !(message.deletedFor || []).includes(currentUser.id)
       ),
     [currentUser.id, messages]
   );
@@ -51,7 +83,7 @@ const MessagesPage = ({ currentUser, users, messages, onSendDirectMessage, onMar
     const summaryMap = new Map();
 
     directMessages.forEach((message) => {
-      const otherUserId = message.participants.find((participantId) => participantId !== currentUser.id);
+      const otherUserId = (message.participants || []).find((participantId) => participantId !== currentUser.id);
       const otherUser = users.find((user) => user.id === otherUserId);
 
       if (!otherUser) {
@@ -59,7 +91,7 @@ const MessagesPage = ({ currentUser, users, messages, onSendDirectMessage, onMar
       }
 
       const existingSummary = summaryMap.get(message.conversationKey);
-      const isUnread = message.senderId !== currentUser.id && !message.readBy.includes(currentUser.id);
+      const isUnread = message.senderId !== currentUser.id && !(message.readBy || []).includes(currentUser.id);
 
       if (!existingSummary) {
         summaryMap.set(message.conversationKey, {
@@ -84,13 +116,51 @@ const MessagesPage = ({ currentUser, users, messages, onSendDirectMessage, onMar
     );
   }, [currentUser.id, directMessages, users]);
 
+  const recentConversationItems = useMemo(() => {
+    if (!selectedUserId) {
+      return conversationSummaries;
+    }
+
+    const alreadyListed = conversationSummaries.some((summary) => summary.otherUser.id === selectedUserId);
+
+    if (alreadyListed) {
+      return conversationSummaries;
+    }
+
+    const selectedListUser = users.find((user) => user.id === selectedUserId && user.id !== currentUser.id);
+
+    if (!selectedListUser) {
+      return conversationSummaries;
+    }
+
+    return [
+      {
+        conversationKey: buildConversationKey(currentUser.id, selectedListUser.id),
+        otherUser: selectedListUser,
+        lastMessage: null,
+        unreadCount: 0,
+        isDraft: true
+      },
+      ...conversationSummaries
+    ];
+  }, [conversationSummaries, currentUser.id, selectedUserId, users]);
+
+  useEffect(() => {
+    if (!routeUserId || routeUserId === activeUserId) {
+      return;
+    }
+
+    setActiveUserId(routeUserId);
+  }, [activeUserId, routeUserId]);
+
   useEffect(() => {
     if (selectedUserId || conversationSummaries.length === 0) {
       return;
     }
 
     const firstConversationUserId = conversationSummaries[0].otherUser.id;
-    setSearchParams({ user: firstConversationUserId });
+    setActiveUserId(firstConversationUserId);
+    setSearchParams({ user: firstConversationUserId }, { replace: true });
   }, [conversationSummaries, selectedUserId, setSearchParams]);
 
   const selectedUser = useMemo(
@@ -100,6 +170,11 @@ const MessagesPage = ({ currentUser, users, messages, onSendDirectMessage, onMar
 
   const activeConversationKey = selectedUser ? buildConversationKey(currentUser.id, selectedUser.id) : '';
 
+  const selectedConversationSummary = useMemo(
+    () => recentConversationItems.find((summary) => summary.otherUser.id === selectedUserId) || null,
+    [recentConversationItems, selectedUserId]
+  );
+
   const activeMessages = useMemo(
     () =>
       directMessages
@@ -108,13 +183,21 @@ const MessagesPage = ({ currentUser, users, messages, onSendDirectMessage, onMar
     [activeConversationKey, directMessages]
   );
 
+  const hasUnreadActiveMessages = useMemo(
+    () =>
+      activeMessages.some(
+        (message) => message.senderId !== currentUser.id && !(message.readBy || []).includes(currentUser.id)
+      ),
+    [activeMessages, currentUser.id]
+  );
+
   useEffect(() => {
-    if (!activeConversationKey) {
+    if (!activeConversationKey || !hasUnreadActiveMessages) {
       return;
     }
 
     onMarkConversationRead(activeConversationKey);
-  }, [activeConversationKey, onMarkConversationRead]);
+  }, [activeConversationKey, hasUnreadActiveMessages, onMarkConversationRead]);
 
   useEffect(() => {
     if (!threadRef.current) {
@@ -141,7 +224,30 @@ const MessagesPage = ({ currentUser, users, messages, onSendDirectMessage, onMar
   const unreadConversationCount = conversationSummaries.filter((summary) => summary.unreadCount > 0).length;
 
   const handleSelectUser = (userId) => {
-    setSearchParams({ user: userId });
+    setQuery('');
+    setDraft('');
+    setActiveUserId(userId);
+    setSearchParams({ user: userId }, { replace: false });
+  };
+
+  const handleDeleteConversation = () => {
+    if (!activeConversationKey || !selectedUser) {
+      return;
+    }
+
+    const shouldDelete = window.confirm(`Delete your conversation with ${selectedUser.name}?`);
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    const result = onDeleteDirectConversation(activeConversationKey);
+
+    if (result.success) {
+      setDraft('');
+      setActiveUserId('');
+      setSearchParams({}, { replace: true });
+    }
   };
 
   return (
@@ -149,8 +255,9 @@ const MessagesPage = ({ currentUser, users, messages, onSendDirectMessage, onMar
       <div className="messages-shell">
         <aside className="messages-sidebar">
           <div className="messages-sidebar-header">
+            <span className="messages-sidebar-eyebrow">Private chat</span>
             <h1>Messages</h1>
-            <p>Pick a classmate and continue the conversation here.</p>
+            <p>Search a classmate, open a thread, and keep your direct conversations here.</p>
           </div>
 
           <input
@@ -175,9 +282,9 @@ const MessagesPage = ({ currentUser, users, messages, onSendDirectMessage, onMar
             <div className="messages-list-section-header">
               <strong>Recent conversations</strong>
             </div>
-            {conversationSummaries.length > 0 ? (
+            {recentConversationItems.length > 0 ? (
               <div className="messages-contact-list">
-                {conversationSummaries.map((summary) => {
+                {recentConversationItems.map((summary) => {
                   const isSelected = selectedUserId === summary.otherUser.id;
 
                   return (
@@ -189,9 +296,20 @@ const MessagesPage = ({ currentUser, users, messages, onSendDirectMessage, onMar
                     >
                       <UserAvatar user={summary.otherUser} size="md" />
                       <div className="messages-contact-copy">
-                        <strong>{summary.otherUser.name}</strong>
-                        <p>{summary.lastMessage.text}</p>
-                        <small>{formatMessageTime(summary.lastMessage.createdAt)}</small>
+                        <div className="messages-contact-topline">
+                          <strong>{summary.otherUser.name}</strong>
+                          <small className="messages-contact-stamp">
+                            {summary.lastMessage
+                              ? formatConversationTime(summary.lastMessage.createdAt)
+                              : 'New'}
+                          </small>
+                        </div>
+                        <p>{summary.lastMessage?.text || 'No messages yet. Start a new conversation.'}</p>
+                        <small>
+                          {summary.otherUser.role === 'admin'
+                            ? 'Admin'
+                            : summary.otherUser.course || 'Student'}
+                        </small>
                       </div>
                       {summary.unreadCount > 0 && (
                         <span className="messages-unread-badge">{summary.unreadCount}</span>
@@ -226,7 +344,10 @@ const MessagesPage = ({ currentUser, users, messages, onSendDirectMessage, onMar
                       >
                         <UserAvatar user={user} size="md" />
                         <div className="messages-contact-copy">
-                          <strong>{user.name}</strong>
+                          <div className="messages-contact-topline">
+                            <strong>{user.name}</strong>
+                            <small className="messages-contact-stamp">Search</small>
+                          </div>
                           <p>{user.role === 'admin' ? 'Admin' : user.course || 'Student'}</p>
                           <small>{user.email}</small>
                         </div>
@@ -258,9 +379,23 @@ const MessagesPage = ({ currentUser, users, messages, onSendDirectMessage, onMar
                     <p>{selectedUser.role === 'admin' ? 'Admin' : selectedUser.course || 'Student'}</p>
                   </div>
                 </div>
-                <Link to={`/users/${selectedUser.id}`} className="card-link-button">
-                  View profile
-                </Link>
+                <div className="messages-panel-actions">
+                  <div className="messages-panel-meta">
+                    <span>{activeMessages.length} message{activeMessages.length === 1 ? '' : 's'}</span>
+                    <span>{selectedConversationSummary?.unreadCount || 0} unread</span>
+                  </div>
+                  <Link to={`/users/${selectedUser.id}`} className="card-link-button">
+                    View profile
+                  </Link>
+                  <button
+                    type="button"
+                    className="messages-delete-button"
+                    onClick={handleDeleteConversation}
+                    disabled={activeMessages.length === 0}
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
 
               <div className="messages-thread" ref={threadRef}>

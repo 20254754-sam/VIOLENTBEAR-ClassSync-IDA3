@@ -3,6 +3,51 @@ import { Link, useParams } from 'react-router-dom';
 import NoteList from '../components/NoteList';
 import UserAvatar from '../components/UserAvatar';
 
+const MAX_PROFILE_IMAGE_SIZE = 8 * 1024 * 1024;
+const PROFILE_IMAGE_SIZE = 512;
+const PROFILE_IMAGE_QUALITY = 0.82;
+
+const loadImage = (source) =>
+  new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('We could not read that image. Please try another file.'));
+    image.src = source;
+  });
+
+const readProfileImage = async (file) => {
+  if (!file.type.startsWith('image/')) {
+    throw new Error('Please choose an image file.');
+  }
+
+  if (file.size > MAX_PROFILE_IMAGE_SIZE) {
+    throw new Error('Please choose an image smaller than 8 MB.');
+  }
+
+  const objectUrl = URL.createObjectURL(file);
+
+  try {
+    const image = await loadImage(objectUrl);
+    const scale = Math.min(1, PROFILE_IMAGE_SIZE / Math.max(image.naturalWidth, image.naturalHeight));
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+
+    if (!context) {
+      throw new Error('This browser could not prepare the image preview.');
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+    context.drawImage(image, 0, 0, width, height);
+
+    return canvas.toDataURL('image/jpeg', PROFILE_IMAGE_QUALITY);
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+};
+
 const ProfilePage = ({
   notes,
   users,
@@ -48,6 +93,7 @@ const ProfilePage = ({
   const [passwordFeedback, setPasswordFeedback] = useState('');
   const [profileImagePreview, setProfileImagePreview] = useState(profileUser.profilePicture || '');
   const [isPasswordEditorOpen, setIsPasswordEditorOpen] = useState(false);
+  const [isProfileImageProcessing, setIsProfileImageProcessing] = useState(false);
 
   useEffect(() => {
     setProfileForm({
@@ -61,26 +107,40 @@ const ProfilePage = ({
     setProfileImagePreview(profileUser.profilePicture || '');
   }, [profileUser]);
 
-  const handleProfilePictureChange = (event) => {
+  const handleProfilePictureChange = async (event) => {
     const [selectedFile] = Array.from(event.target.files || []);
 
     if (!selectedFile) {
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = String(reader.result || '');
+    setProfileFeedback('');
+    setIsProfileImageProcessing(true);
+
+    try {
+      const dataUrl = await readProfileImage(selectedFile);
+      const nextProfileForm = {
+        ...profileForm,
+        profilePicture: dataUrl
+      };
+
       setProfileForm((currentForm) => ({
         ...currentForm,
         profilePicture: dataUrl
       }));
       setProfileImagePreview(dataUrl);
+
       if (isOwnProfile) {
         onPreviewProfilePicture(dataUrl);
+        const result = onUpdateProfile(nextProfileForm);
+        setProfileFeedback(result.success ? 'Profile picture updated.' : result.message);
       }
-    };
-    reader.readAsDataURL(selectedFile);
+    } catch (error) {
+      setProfileFeedback(error instanceof Error ? error.message : 'Unable to update the profile picture.');
+    } finally {
+      setIsProfileImageProcessing(false);
+      event.target.value = '';
+    }
   };
 
   const handleProfileSubmit = (event) => {
@@ -169,7 +229,10 @@ const ProfilePage = ({
               <div className="profile-picture-editor">
                 <UserAvatar user={{ ...profileUser, profilePicture: profileImagePreview }} size="lg" />
                 <label className="attachment-picker">
-                  <span className="attachment-picker-title">Change profile picture</span>
+                  <span className="attachment-picker-title">
+                    {isProfileImageProcessing ? 'Preparing image...' : 'Change profile picture'}
+                  </span>
+                  <small className="attachment-picker-help">Images are resized for a safer profile preview.</small>
                   <input type="file" className="attachment-input" accept="image/*" onChange={handleProfilePictureChange} />
                 </label>
               </div>
