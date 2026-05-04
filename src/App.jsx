@@ -2471,6 +2471,7 @@ function App() {
                 theme={theme}
                 onToggleTheme={toggleTheme}
                 securityQuestions={SECURITY_QUESTIONS}
+                users={users}
               />
             }
           />

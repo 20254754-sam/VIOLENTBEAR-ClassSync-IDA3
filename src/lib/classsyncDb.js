@@ -9,6 +9,7 @@ const CLOUD_WRITE_TIMEOUT_MS = 4500;
 
 const CLOUD_TABLES = {
   forum: 'classsync_forum_posts',
+  gameScores: 'classsync_game_scores',
   messages: 'classsync_messages',
   notes: 'classsync_notes',
   notifications: 'classsync_notifications',

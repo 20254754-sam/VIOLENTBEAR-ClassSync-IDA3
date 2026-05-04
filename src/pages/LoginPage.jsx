@@ -1,8 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import BrandLogo from '../components/BrandLogo';
+import { readDbValue, subscribeToDbCollection, writeDbValue } from '../lib/classsyncDb';
 
 const GAME_BOARD_SIZE = 8;
+const CLASSBLOCKS_LEADERBOARD_KEY = 'classblocks-leaderboard-v1';
+const CLASSBLOCKS_DB_KEY = 'gameScores';
+const BACKGROUND_UNLOCK_BOOK_LIMIT = 5;
 
 const backgroundNotes = [
   { className: 'auth-note-one', x: 0.12, y: 0.2, color: 'rgba(78, 110, 216, 0.58)' },
@@ -33,14 +37,140 @@ const cardBooks = [
 
 const getEmailPrefix = (value) => value.replace(/@classsync\.com$/i, '').replace(/\s+/g, '');
 
+const getClassSyncEmail = (value) => {
+  const prefix = getEmailPrefix(value || '').trim().toLowerCase();
+  return prefix ? `${prefix}@classsync.com` : '';
+};
+
+const readClassBlocksLeaderboard = () => {
+  try {
+    const stored = window.localStorage.getItem(CLASSBLOCKS_LEADERBOARD_KEY);
+    const parsed = stored ? JSON.parse(stored) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeClassBlocksLeaderboard = (leaderboard) => {
+  try {
+    window.localStorage.setItem(CLASSBLOCKS_LEADERBOARD_KEY, JSON.stringify(leaderboard));
+  } catch {
+    // Local storage can fail in private windows; the game still works without persistence.
+  }
+};
+
+const normalizeClassBlocksLeaderboard = (leaderboard) => {
+  const bestByPlayer = new Map();
+
+  (Array.isArray(leaderboard) ? leaderboard : []).forEach((entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return;
+    }
+
+    const normalizedName = String(entry.name || 'Guest player').trim() || 'Guest player';
+    const playerKey = entry.playerKey || getClassBlocksPlayerKey(normalizedName);
+    const highScore = Number(entry.highScore ?? entry.score ?? 0);
+
+    if (!Number.isFinite(highScore) || highScore <= 0) {
+      return;
+    }
+
+    const existingEntry = bestByPlayer.get(playerKey);
+
+    if (existingEntry && existingEntry.highScore >= highScore) {
+      return;
+    }
+
+    bestByPlayer.set(playerKey, {
+      id: playerKey,
+      playerKey,
+      name: normalizedName,
+      highScore,
+      createdAt: entry.createdAt || entry.updatedAt || new Date().toISOString(),
+      updatedAt: entry.updatedAt || entry.createdAt || new Date().toISOString()
+    });
+  });
+
+  return Array.from(bestByPlayer.values());
+};
+
+const sortClassBlocksLeaderboard = (leaderboard) =>
+  normalizeClassBlocksLeaderboard(leaderboard).sort((first, second) => {
+    if (second.highScore !== first.highScore) {
+      return second.highScore - first.highScore;
+    }
+
+    return new Date(first.updatedAt || 0) - new Date(second.updatedAt || 0);
+  });
+
+const getClassBlocksPlayer = ({ mode, credentials, registerForm, users }) => {
+  const formEmail = mode === 'register' ? registerForm.email : credentials.email;
+  const email = getClassSyncEmail(formEmail);
+  const matchedUser = users.find((user) => user.email?.toLowerCase() === email);
+  const fallbackName = mode === 'register' ? registerForm.name.trim() : '';
+
+  if (!email) {
+    return {
+      id: 'guest',
+      name: fallbackName || 'Guest player',
+      email: 'guest@classblocks.local'
+    };
+  }
+
+  return {
+    id: matchedUser?.id || email,
+    name: matchedUser?.name || fallbackName || getEmailPrefix(email) || 'ClassSync Player',
+    email
+  };
+};
+
+const getClassBlocksPlayerKey = (name) =>
+  (name || 'Guest player')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'guest-player';
+
 const blockPieces = [
-  { id: 'single', cells: [[0, 0]], color: 'var(--accent)' },
-  { id: 'line2', cells: [[0, 0], [1, 0]], color: 'var(--accent-strong)' },
-  { id: 'line3', cells: [[0, 0], [1, 0], [2, 0]], color: 'var(--accent)' },
-  { id: 'stack3', cells: [[0, 0], [0, 1], [0, 2]], color: 'var(--accent-warm)' },
-  { id: 'square', cells: [[0, 0], [1, 0], [0, 1], [1, 1]], color: 'var(--accent-strong)' },
-  { id: 'corner', cells: [[0, 0], [0, 1], [1, 1]], color: 'var(--accent-warm)' },
-  { id: 't', cells: [[0, 0], [1, 0], [2, 0], [1, 1]], color: 'var(--accent)' }
+  { id: 'single', tier: 'easy', cells: [[0, 0]], color: 'var(--accent)' },
+  { id: 'line2-h', tier: 'easy', cells: [[0, 0], [1, 0]], color: 'var(--accent-strong)' },
+  { id: 'line2-v', tier: 'easy', cells: [[0, 0], [0, 1]], color: 'var(--accent-strong)' },
+  { id: 'line3-h', tier: 'easy', cells: [[0, 0], [1, 0], [2, 0]], color: 'var(--accent)' },
+  { id: 'line3-v', tier: 'easy', cells: [[0, 0], [0, 1], [0, 2]], color: 'var(--accent)' },
+  { id: 'line4-h', tier: 'medium', cells: [[0, 0], [1, 0], [2, 0], [3, 0]], color: 'var(--accent-warm)' },
+  { id: 'line4-v', tier: 'medium', cells: [[0, 0], [0, 1], [0, 2], [0, 3]], color: 'var(--accent-warm)' },
+  { id: 'line5-h', tier: 'hard', cells: [[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]], color: 'var(--accent-strong)' },
+  { id: 'line5-v', tier: 'hard', cells: [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4]], color: 'var(--accent-strong)' },
+  { id: 'square2', tier: 'easy', cells: [[0, 0], [1, 0], [0, 1], [1, 1]], color: 'var(--accent-strong)' },
+  {
+    id: 'square3',
+    tier: 'hard',
+    cells: [
+      [0, 0],
+      [1, 0],
+      [2, 0],
+      [0, 1],
+      [1, 1],
+      [2, 1],
+      [0, 2],
+      [1, 2],
+      [2, 2]
+    ],
+    color: 'var(--accent-warm)'
+  },
+  { id: 'corner-small', tier: 'medium', cells: [[0, 0], [0, 1], [1, 1]], color: 'var(--accent-warm)' },
+  { id: 'corner-small-r', tier: 'medium', cells: [[1, 0], [0, 1], [1, 1]], color: 'var(--accent-warm)' },
+  { id: 'corner-large', tier: 'medium', cells: [[0, 0], [0, 1], [0, 2], [1, 2], [2, 2]], color: 'var(--accent)' },
+  { id: 'corner-large-r', tier: 'medium', cells: [[2, 0], [2, 1], [0, 2], [1, 2], [2, 2]], color: 'var(--accent)' },
+  { id: 'l-2x3', tier: 'medium', cells: [[0, 0], [0, 1], [0, 2], [1, 2]], color: 'var(--accent-strong)' },
+  { id: 'l-3x2', tier: 'medium', cells: [[0, 0], [1, 0], [2, 0], [0, 1]], color: 'var(--accent-strong)' },
+  { id: 't-up', tier: 'medium', cells: [[0, 0], [1, 0], [2, 0], [1, 1]], color: 'var(--accent)' },
+  { id: 't-down', tier: 'medium', cells: [[1, 0], [0, 1], [1, 1], [2, 1]], color: 'var(--accent)' },
+  { id: 'zigzag-s', tier: 'hard', cells: [[1, 0], [2, 0], [0, 1], [1, 1]], color: 'var(--accent-warm)' },
+  { id: 'zigzag-z', tier: 'hard', cells: [[0, 0], [1, 0], [1, 1], [2, 1]], color: 'var(--accent-warm)' },
+  { id: 'rect-2x3', tier: 'hard', cells: [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]], color: 'var(--accent-strong)' },
+  { id: 'rect-3x2', tier: 'hard', cells: [[0, 0], [1, 0], [0, 1], [1, 1], [0, 2], [1, 2]], color: 'var(--accent-strong)' }
 ];
 
 const createEmptyBoard = () =>
@@ -50,11 +180,6 @@ const getPieceFootprint = (piece) => ({
   width: Math.max(...piece.cells.map(([x]) => x)) + 1,
   height: Math.max(...piece.cells.map(([, y]) => y)) + 1
 });
-
-const getNextPieces = (offset = 0) => {
-  const start = offset % blockPieces.length;
-  return [blockPieces[start], blockPieces[(start + 2) % blockPieces.length], blockPieces[(start + 4) % blockPieces.length]];
-};
 
 const canPlacePiece = (board, piece, row, col) =>
   piece.cells.every(([x, y]) => {
@@ -108,6 +233,93 @@ const clearCompletedLines = (board) => {
     rowsToClear,
     colsToClear
   };
+};
+
+const getLineClearBaseScore = (clearedLines) => (clearedLines * (clearedLines + 1) * 10) / 2;
+
+const getPiecePlacements = (board, piece) => {
+  const footprint = getPieceFootprint(piece);
+  const placements = [];
+
+  for (let row = 0; row <= GAME_BOARD_SIZE - footprint.height; row += 1) {
+    for (let col = 0; col <= GAME_BOARD_SIZE - footprint.width; col += 1) {
+      if (canPlacePiece(board, piece, row, col)) {
+        placements.push({ row, col });
+      }
+    }
+  }
+
+  return placements;
+};
+
+const canAnyPieceFit = (board, pieces) => pieces.some((piece) => getPiecePlacements(board, piece).length > 0);
+
+const canPieceClearLine = (board, piece) =>
+  getPiecePlacements(board, piece).some(({ row, col }) => {
+    const placedBoard = placePieceOnBoard(board, piece, row, col);
+    return clearCompletedLines(placedBoard).cleared > 0;
+  });
+
+const getTierWeights = ({ score = 0, comboNumber = 0 }) => {
+  const pressure = Math.min(4, Math.floor(score / 900) + Math.floor(comboNumber / 3));
+
+  return {
+    easy: Math.max(3, 8 - pressure),
+    medium: 3 + Math.min(3, pressure),
+    hard: 1 + Math.min(4, Math.floor(pressure / 2))
+  };
+};
+
+const pickWeightedPiece = (pieces, weights, usedIds = new Set()) => {
+  const uniquePieces = pieces.filter((piece) => !usedIds.has(piece.id));
+  const pool = uniquePieces.length ? uniquePieces : pieces;
+  const totalWeight = pool.reduce((total, piece) => total + (weights[piece.tier] || 1), 0);
+  let pick = Math.random() * totalWeight;
+
+  for (const piece of pool) {
+    pick -= weights[piece.tier] || 1;
+
+    if (pick <= 0) {
+      return piece;
+    }
+  }
+
+  return pool[0];
+};
+
+const generateNextPieces = (board, { score = 0, comboNumber = 0 } = {}) => {
+  const eligiblePieces = blockPieces.filter((piece) => getPiecePlacements(board, piece).length > 0);
+
+  if (!eligiblePieces.length) {
+    return [];
+  }
+
+  const weights = getTierWeights({ score, comboNumber });
+  const usedIds = new Set();
+  const nextPieces = [];
+
+  if (comboNumber >= 3) {
+    const clearingPieces = eligiblePieces.filter((piece) => canPieceClearLine(board, piece));
+    const comboSaver = clearingPieces.length ? pickWeightedPiece(clearingPieces, weights, usedIds) : null;
+
+    if (comboSaver) {
+      nextPieces.push(comboSaver);
+      usedIds.add(comboSaver.id);
+    }
+  }
+
+  while (nextPieces.length < 3) {
+    const nextPiece = pickWeightedPiece(eligiblePieces, weights, usedIds);
+
+    if (!nextPiece) {
+      break;
+    }
+
+    nextPieces.push(nextPiece);
+    usedIds.add(nextPiece.id);
+  }
+
+  return nextPieces;
 };
 
 const BookGlyph = () => (
@@ -166,51 +378,107 @@ const EmailField = ({ id, label, value, onChange, placeholder = 'username' }) =>
   </div>
 );
 
-const ClassBlocksGame = ({ onExit }) => {
+const ClassBlocksGame = ({ player, leaderboard, onRecordScore, onExit }) => {
   const [started, setStarted] = useState(false);
   const [board, setBoard] = useState(() => createEmptyBoard());
-  const [pieces, setPieces] = useState(() => getNextPieces());
+  const [pieces, setPieces] = useState(() => generateNextPieces(createEmptyBoard()));
   const [draggedPieceId, setDraggedPieceId] = useState(null);
   const [dragPosition, setDragPosition] = useState(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [dragPreviewMetrics, setDragPreviewMetrics] = useState({ cellSize: 18, gapSize: 4 });
   const [clearingCells, setClearingCells] = useState(() => new Set());
+  const [previewLineCells, setPreviewLineCells] = useState(() => new Set());
   const [isClearing, setIsClearing] = useState(false);
+  const [isGameOver, setIsGameOver] = useState(false);
   const [score, setScore] = useState(0);
-  const [pieceOffset, setPieceOffset] = useState(0);
-  const [message, setMessage] = useState('Pop five books to unlock. Ready when you are.');
+  const [comboNumber, setComboNumber] = useState(0);
+  const [placementsSinceClear, setPlacementsSinceClear] = useState(0);
+  const [message, setMessage] = useState('Press Start to begin.');
+  const [playerName, setPlayerName] = useState(player.name === 'Guest player' ? '' : player.name);
+  const [pendingScore, setPendingScore] = useState(null);
+  const [isScoreSaved, setIsScoreSaved] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
   const draggedPiece = pieces.find((piece) => piece.id === draggedPieceId);
+  const isComboActive = comboNumber >= 3;
+  const sortedLeaderboard = sortClassBlocksLeaderboard(leaderboard);
+  const playerKey = getClassBlocksPlayerKey(playerName || player.name);
+  const playerRecord = sortedLeaderboard.find((entry) => (entry.playerKey || entry.email) === playerKey);
+  const playerRank = playerRecord
+    ? sortedLeaderboard.findIndex((entry) => (entry.playerKey || entry.email) === playerKey) + 1
+    : null;
+  const topLeaderboard = sortedLeaderboard.slice(0, 5);
 
-  const resetGame = () => {
-    setStarted(true);
-    setBoard(createEmptyBoard());
-    setPieces(getNextPieces(0));
+  const resetDraggedPiece = () => {
     setDraggedPieceId(null);
     setDragPosition(null);
     setDragOffset({ x: 0, y: 0 });
+    setDragPreviewMetrics({ cellSize: 18, gapSize: 4 });
+    setPreviewLineCells(new Set());
+  };
+
+  const resetGame = () => {
+    const freshBoard = createEmptyBoard();
+
+    setStarted(true);
+    setBoard(freshBoard);
+    setPieces(generateNextPieces(freshBoard));
+    resetDraggedPiece();
     setClearingCells(new Set());
+    setPreviewLineCells(new Set());
     setIsClearing(false);
+    setIsGameOver(false);
     setScore(0);
-    setPieceOffset(0);
+    setComboNumber(0);
+    setPlacementsSinceClear(0);
+    setPendingScore(null);
+    setIsScoreSaved(false);
     setMessage('Drag a piece onto the board.');
   };
 
-  const finishPieceTurn = (remainingPieces, cleared, clearedBoard) => {
+  const endGame = (gameOverBoard, gameOverPieces, finalScore = score) => {
+    setBoard(gameOverBoard);
+    setPieces(gameOverPieces);
+    setIsGameOver(true);
+    setPendingScore(finalScore);
+    setIsScoreSaved(false);
+    setMessage('Game over! No blocks can fit anymore.');
+  };
+
+  const finishPieceTurn = (remainingPieces, cleared, clearedBoard, nextMessage, nextScore, nextComboNumber) => {
     if (remainingPieces.length) {
+      if (!canAnyPieceFit(clearedBoard, remainingPieces)) {
+        endGame(clearedBoard, remainingPieces, nextScore);
+        return;
+      }
+
       setPieces(remainingPieces);
-      setMessage(cleared ? `Line cleared! +${cleared * 100}` : 'Nice drop.');
+      setMessage(nextMessage || (cleared ? `Line cleared!` : 'Nice drop.'));
       return;
     }
 
-    const nextOffset = pieceOffset + 1;
-    setPieceOffset(nextOffset);
-    setPieces(getNextPieces(nextOffset));
-    setMessage(cleared ? `Fresh pieces. Cleared ${cleared} line${cleared > 1 ? 's' : ''}!` : 'Fresh pieces!');
+    const nextPieces = generateNextPieces(clearedBoard, {
+      score: nextScore,
+      comboNumber: nextComboNumber
+    });
+
+    if (!nextPieces.length) {
+      endGame(clearedBoard, [], nextScore);
+      return;
+    }
+
+    setPieces(nextPieces);
+    setMessage(nextMessage || (cleared ? `Fresh pieces. Cleared ${cleared} line${cleared > 1 ? 's' : ''}!` : 'Fresh pieces!'));
     setBoard(clearedBoard);
   };
 
   const handlePlacePiece = (piece, row, col) => {
     if (!started) {
       setMessage('Press Start to play.');
+      return;
+    }
+
+    if (isGameOver) {
+      setMessage('Game over. Start a new run.');
       return;
     }
 
@@ -225,6 +493,7 @@ const ClassBlocksGame = ({ onExit }) => {
     }
 
     if (!canPlacePiece(board, piece, row, col)) {
+      resetDraggedPiece();
       setMessage('That piece does not fit there.');
       return;
     }
@@ -232,15 +501,32 @@ const ClassBlocksGame = ({ onExit }) => {
     const placedBoard = placePieceOnBoard(board, piece, row, col);
     const { board: clearedBoard, cleared, rowsToClear, colsToClear } = clearCompletedLines(placedBoard);
     const remainingPieces = pieces.filter((currentPiece) => currentPiece.id !== piece.id);
-    const placedScore = piece.cells.length * 10 + cleared * 100;
+    const placementScore = piece.cells.length;
+    const clearBaseScore = cleared ? getLineClearBaseScore(cleared) : 0;
+    const clearScore = cleared ? clearBaseScore * (comboNumber + 1) : 0;
+    const moveScore = placementScore + clearScore;
+    const missedClearWindow = !cleared && placementsSinceClear + 1 >= 3;
+    const nextComboNumber = cleared ? comboNumber + 1 : missedClearWindow ? 0 : comboNumber;
+    const nextPlacementsSinceClear = cleared || missedClearWindow ? 0 : placementsSinceClear + 1;
+    const nextScore = score + moveScore;
+    const scoringMessage = cleared
+      ? `${cleared} line${cleared > 1 ? 's' : ''}! +${moveScore} (${clearBaseScore} x ${comboNumber + 1})`
+      : missedClearWindow && comboNumber > 0
+      ? `+${placementScore}. Combo reset after 3 moves without a clear.`
+      : missedClearWindow
+      ? `+${placementScore}. Find a line clear to start a combo.`
+      : `+${placementScore}. Clear within ${3 - nextPlacementsSinceClear} move${
+          3 - nextPlacementsSinceClear === 1 ? '' : 's'
+        } to keep the combo.`;
 
-    setScore((current) => current + placedScore);
-    setDraggedPieceId(null);
-    setDragPosition(null);
+    setScore(nextScore);
+    setComboNumber(nextComboNumber);
+    setPlacementsSinceClear(cleared ? 0 : nextPlacementsSinceClear);
+    resetDraggedPiece();
 
     if (!cleared) {
       setBoard(clearedBoard);
-      finishPieceTurn(remainingPieces, cleared, clearedBoard);
+      finishPieceTurn(remainingPieces, cleared, clearedBoard, scoringMessage, nextScore, nextComboNumber);
       return;
     }
 
@@ -260,32 +546,43 @@ const ClassBlocksGame = ({ onExit }) => {
     setPieces(remainingPieces);
     setClearingCells(nextClearingCells);
     setIsClearing(true);
-    setMessage(`Line cleared! +${cleared * 100}`);
+    setMessage(scoringMessage);
 
     window.setTimeout(() => {
       setBoard(clearedBoard);
       setClearingCells(new Set());
       setIsClearing(false);
-      finishPieceTurn(remainingPieces, cleared, clearedBoard);
+      finishPieceTurn(remainingPieces, cleared, clearedBoard, scoringMessage, nextScore, nextComboNumber);
     }, 520);
   };
 
   const handlePiecePointerDown = (event, piece) => {
-    if (!started || isClearing) {
-      setMessage(started ? 'Wait for the line to clear.' : 'Press Start to play.');
+    if (!started || isClearing || isGameOver) {
+      setMessage(!started ? 'Press Start to play.' : isGameOver ? 'Game over. Start a new run.' : 'Wait for the line to clear.');
       return;
     }
 
     event.preventDefault();
     const pieceRect = event.currentTarget.getBoundingClientRect();
+    const boardCell = document.querySelector('.classblocks-cell');
+    const boardElement = document.querySelector('.classblocks-board');
+    const boardStyles = boardElement ? window.getComputedStyle(boardElement) : null;
+    const footprint = getPieceFootprint(piece);
+    const cellSize = boardCell?.getBoundingClientRect().width || 18;
+    const gapSize = Number.parseFloat(boardStyles?.columnGap || boardStyles?.gap || '4') || 4;
+    const previewWidth = footprint.width * cellSize + Math.max(0, footprint.width - 1) * gapSize;
+    const previewHeight = footprint.height * cellSize + Math.max(0, footprint.height - 1) * gapSize;
+    const grabRatioX = pieceRect.width ? (event.clientX - pieceRect.left) / pieceRect.width : 0.5;
+    const grabRatioY = pieceRect.height ? (event.clientY - pieceRect.top) / pieceRect.height : 0.5;
 
     event.currentTarget.setPointerCapture?.(event.pointerId);
     setDraggedPieceId(piece.id);
     setDragPosition({ x: event.clientX, y: event.clientY });
     setDragOffset({
-      x: event.clientX - pieceRect.left,
-      y: event.clientY - pieceRect.top
+      x: grabRatioX * previewWidth,
+      y: grabRatioY * previewHeight
     });
+    setDragPreviewMetrics({ cellSize, gapSize });
     setMessage('Drop the piece onto the board.');
   };
 
@@ -295,37 +592,205 @@ const ClassBlocksGame = ({ onExit }) => {
     }
 
     setDragPosition({ x: event.clientX, y: event.clientY });
+    updateLinePreview(event.clientX, event.clientY);
   };
 
-  const handlePiecePointerUp = (event) => {
+  const getFirstRenderedPieceCell = (piece) => {
+    const footprint = getPieceFootprint(piece);
+
+    for (let index = 0; index < footprint.width * footprint.height; index += 1) {
+      const x = index % footprint.width;
+      const y = Math.floor(index / footprint.width);
+
+      if (piece.cells.some(([cellX, cellY]) => cellX === x && cellY === y)) {
+        return { x, y };
+      }
+    }
+
+    return { x: 0, y: 0 };
+  };
+
+  const getDropOriginFromPreview = (piece) => {
+    const boardElement = document.querySelector('.classblocks-board');
+    const previewFirstBlock = document.querySelector('.classblocks-drag-preview .classblocks-piece-dot');
+    const boardCells = Array.from(document.querySelectorAll('.classblocks-cell'));
+
+    if (!piece || !boardElement || !previewFirstBlock || !boardCells.length) {
+      return null;
+    }
+
+    const boardRect = boardElement.getBoundingClientRect();
+    const firstBlockRect = previewFirstBlock.getBoundingClientRect();
+    const originX = firstBlockRect.left + firstBlockRect.width / 2;
+    const originY = firstBlockRect.top + firstBlockRect.height / 2;
+
+    if (
+      originX < boardRect.left ||
+      originX > boardRect.right ||
+      originY < boardRect.top ||
+      originY > boardRect.bottom
+    ) {
+      return null;
+    }
+
+    const closestCell = boardCells.reduce((closest, cell) => {
+      const cellRect = cell.getBoundingClientRect();
+      const cellCenterX = cellRect.left + cellRect.width / 2;
+      const cellCenterY = cellRect.top + cellRect.height / 2;
+      const distance = Math.hypot(originX - cellCenterX, originY - cellCenterY);
+
+      if (!closest || distance < closest.distance) {
+        return { cell, distance };
+      }
+
+      return closest;
+    }, null)?.cell;
+
+    if (!closestCell) {
+      return null;
+    }
+
+    const firstRenderedCell = getFirstRenderedPieceCell(piece);
+
+    return {
+      row: Number(closestCell.dataset.row) - firstRenderedCell.y,
+      col: Number(closestCell.dataset.col) - firstRenderedCell.x
+    };
+  };
+
+  const getDropOriginFromCoordinates = (piece, originX, originY) => {
+    const boardElement = document.querySelector('.classblocks-board');
+    const boardCells = Array.from(document.querySelectorAll('.classblocks-cell'));
+
+    if (!piece || !boardElement || !boardCells.length) {
+      return null;
+    }
+
+    const boardRect = boardElement.getBoundingClientRect();
+
+    if (
+      originX < boardRect.left ||
+      originX > boardRect.right ||
+      originY < boardRect.top ||
+      originY > boardRect.bottom
+    ) {
+      return null;
+    }
+
+    const closestCell = boardCells.reduce((closest, cell) => {
+      const cellRect = cell.getBoundingClientRect();
+      const cellCenterX = cellRect.left + cellRect.width / 2;
+      const cellCenterY = cellRect.top + cellRect.height / 2;
+      const distance = Math.hypot(originX - cellCenterX, originY - cellCenterY);
+
+      if (!closest || distance < closest.distance) {
+        return { cell, distance };
+      }
+
+      return closest;
+    }, null)?.cell;
+
+    if (!closestCell) {
+      return null;
+    }
+
+    const firstRenderedCell = getFirstRenderedPieceCell(piece);
+
+    return {
+      row: Number(closestCell.dataset.row) - firstRenderedCell.y,
+      col: Number(closestCell.dataset.col) - firstRenderedCell.x
+    };
+  };
+
+  const updateLinePreview = (pointerX, pointerY) => {
+    const piece = draggedPiece || pieces.find((currentPiece) => currentPiece.id === draggedPieceId);
+
+    if (!piece) {
+      setPreviewLineCells(new Set());
+      return;
+    }
+
+    const firstRenderedCell = getFirstRenderedPieceCell(piece);
+    const previewOriginX =
+      pointerX - dragOffset.x + firstRenderedCell.x * (dragPreviewMetrics.cellSize + dragPreviewMetrics.gapSize) + dragPreviewMetrics.cellSize / 2;
+    const previewOriginY =
+      pointerY - dragOffset.y + firstRenderedCell.y * (dragPreviewMetrics.cellSize + dragPreviewMetrics.gapSize) + dragPreviewMetrics.cellSize / 2;
+    const dropOrigin = getDropOriginFromCoordinates(piece, previewOriginX, previewOriginY);
+
+    if (!dropOrigin || !canPlacePiece(board, piece, dropOrigin.row, dropOrigin.col)) {
+      setPreviewLineCells(new Set());
+      return;
+    }
+
+    const placedBoard = placePieceOnBoard(board, piece, dropOrigin.row, dropOrigin.col);
+    const { cleared, rowsToClear, colsToClear } = clearCompletedLines(placedBoard);
+
+    if (!cleared) {
+      setPreviewLineCells(new Set());
+      return;
+    }
+
+    const nextPreviewCells = new Set();
+    rowsToClear.forEach((rowIndex) => {
+      for (let colIndex = 0; colIndex < GAME_BOARD_SIZE; colIndex += 1) {
+        nextPreviewCells.add(`${rowIndex}-${colIndex}`);
+      }
+    });
+    colsToClear.forEach((colIndex) => {
+      for (let rowIndex = 0; rowIndex < GAME_BOARD_SIZE; rowIndex += 1) {
+        nextPreviewCells.add(`${rowIndex}-${colIndex}`);
+      }
+    });
+    setPreviewLineCells(nextPreviewCells);
+  };
+
+  const handlePiecePointerUp = () => {
     if (!draggedPiece) {
       return;
     }
 
-    const dropTarget = document
-      .elementFromPoint(event.clientX, event.clientY)
-      ?.closest?.('.classblocks-cell');
+    const dropOrigin = getDropOriginFromPreview(draggedPiece);
 
-    if (!dropTarget) {
-      setDraggedPieceId(null);
-      setDragPosition(null);
-      setDragOffset({ x: 0, y: 0 });
+    if (!dropOrigin) {
+      resetDraggedPiece();
       setMessage('Drop it on the board.');
       return;
     }
 
-    handlePlacePiece(draggedPiece, Number(dropTarget.dataset.row), Number(dropTarget.dataset.col));
+    handlePlacePiece(draggedPiece, dropOrigin.row, dropOrigin.col);
+  };
+
+  const handleSaveScore = (event) => {
+    event.preventDefault();
+    const trimmedName = playerName.trim();
+
+    if (!trimmedName) {
+      setMessage('Add your player name to save the score.');
+      return;
+    }
+
+    onRecordScore({ name: trimmedName, score: pendingScore ?? score });
+    setIsScoreSaved(true);
+    setShowLeaderboard(true);
+    setMessage('Score saved to the leaderboard.');
   };
 
   return (
-    <section className="classblocks-panel" aria-label="ClassBlocks mini game">
+    <section
+      className={`classblocks-panel ${isGameOver ? 'classblocks-panel-game-over' : ''}`}
+      aria-label="ClassBlocks mini game"
+    >
       <div className="classblocks-header">
         <div>
           <p className="auth-eyebrow">Unlocked mini game</p>
           <h2>ClassBlocks</h2>
         </div>
         <div className="classblocks-header-actions">
-          <strong>{score}</strong>
+          <div className="classblocks-score-stack">
+            <strong>{score}</strong>
+            <span className={`classblocks-heart ${isComboActive ? 'classblocks-heart-active' : ''}`}>♥</span>
+            <small>x{comboNumber + 1}</small>
+          </div>
           <button type="button" className="classblocks-exit-button" onClick={onExit}>
             Back to login
           </button>
@@ -341,7 +806,7 @@ const ClassBlocksGame = ({ onExit }) => {
               type="button"
               className={`classblocks-cell ${cell ? 'classblocks-cell-filled' : ''} ${
                 clearingCells.has(`${rowIndex}-${colIndex}`) ? 'classblocks-cell-clearing' : ''
-              }`}
+              } ${previewLineCells.has(`${rowIndex}-${colIndex}`) ? 'classblocks-cell-line-preview' : ''}`}
               data-row={rowIndex}
               data-col={colIndex}
               style={cell ? { '--block-color': cell } : undefined}
@@ -349,7 +814,36 @@ const ClassBlocksGame = ({ onExit }) => {
             />
           ))
         )}
+        {!started && (
+          <div className="classblocks-start-hint" aria-hidden="true">
+            <span>Click Start</span>
+            <small>to play</small>
+          </div>
+        )}
       </div>
+
+      {isGameOver && (
+        <div className="classblocks-game-over" role="status" aria-live="polite">
+          <span>Game over</span>
+          <strong>{score}</strong>
+          <small>No blocks can fit. Save your score with your player name.</small>
+          <form className="classblocks-save-score" onSubmit={handleSaveScore}>
+            <input
+              value={playerName}
+              onChange={(event) => {
+                setPlayerName(event.target.value);
+                setIsScoreSaved(false);
+              }}
+              placeholder="Player name"
+              aria-label="Player name"
+              maxLength="24"
+            />
+            <button type="submit" disabled={isScoreSaved}>
+              {isScoreSaved ? 'Saved' : 'Save score'}
+            </button>
+          </form>
+        </div>
+      )}
 
       <div className="classblocks-pieces" aria-label="Available block pieces">
         {pieces.map((piece) => {
@@ -369,11 +863,9 @@ const ClassBlocksGame = ({ onExit }) => {
               onPointerMove={handlePiecePointerMove}
               onPointerUp={handlePiecePointerUp}
               onPointerCancel={() => {
-                setDraggedPieceId(null);
-                setDragPosition(null);
-                setDragOffset({ x: 0, y: 0 });
+                resetDraggedPiece();
               }}
-              disabled={!started || isClearing}
+              disabled={!started || isClearing || isGameOver}
               aria-label={`Select ${piece.id} piece`}
             >
               {Array.from({ length: footprint.width * footprint.height }).map((_, index) => {
@@ -395,6 +887,8 @@ const ClassBlocksGame = ({ onExit }) => {
             '--piece-color': draggedPiece.color,
             '--piece-cols': getPieceFootprint(draggedPiece).width,
             '--piece-rows': getPieceFootprint(draggedPiece).height,
+            '--drag-cell-size': `${dragPreviewMetrics.cellSize}px`,
+            '--drag-gap-size': `${dragPreviewMetrics.gapSize}px`,
             left: dragPosition.x - dragOffset.x,
             top: dragPosition.y - dragOffset.y
           }}
@@ -414,8 +908,54 @@ const ClassBlocksGame = ({ onExit }) => {
       )}
 
       <button type="button" className="auth-submit-button classblocks-start" onClick={resetGame}>
-        {started ? 'Restart game' : 'Start game'}
+        {isGameOver ? 'Play again' : started ? 'Restart game' : 'Start game'}
       </button>
+
+      <button
+        type="button"
+        className="classblocks-leaderboard-toggle"
+        onClick={() => setShowLeaderboard((current) => !current)}
+      >
+        {showLeaderboard ? 'Hide leaderboards' : 'Leaderboards'}
+      </button>
+
+      {showLeaderboard && (
+        <div className="classblocks-leaderboard" aria-label="ClassBlocks leaderboard">
+          <div className="classblocks-leaderboard-head">
+            <div>
+              <p className="auth-eyebrow">Top 5</p>
+              <h3>Leaderboards</h3>
+            </div>
+            <div className="classblocks-player-rank">
+              <span>Your place</span>
+              <strong>{playerRank ? `#${playerRank}` : '-'}</strong>
+            </div>
+          </div>
+
+          <div className="classblocks-player-best">
+            <span>{playerName.trim() || player.name}</span>
+            <strong>{playerRecord?.highScore || 0}</strong>
+            <small>Your high score</small>
+          </div>
+
+          {topLeaderboard.length > 0 ? (
+            <ol className="classblocks-leaderboard-list">
+              {topLeaderboard.map((entry, index) => (
+                <li
+                  key={entry.playerKey || entry.email}
+                  className={(entry.playerKey || entry.email) === playerKey ? 'classblocks-leaderboard-current' : ''}
+                >
+                  <span>#{index + 1}</span>
+                  <strong>{entry.name}</strong>
+                  <em>{entry.highScore}</em>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="classblocks-leaderboard-empty">Finish a game and save your name to write the first score.</p>
+          )}
+        </div>
+      )}
     </section>
   );
 };
@@ -427,7 +967,8 @@ const LoginPage = ({
   onGetRecoveryQuestion,
   theme,
   onToggleTheme,
-  securityQuestions
+  securityQuestions,
+  users = []
 }) => {
   const [mode, setMode] = useState('login');
   const [credentials, setCredentials] = useState({
@@ -460,6 +1001,12 @@ const LoginPage = ({
   const [showAdditionalInfo, setShowAdditionalInfo] = useState(false);
   const [poppedBooks, setPoppedBooks] = useState([]);
   const [isGameUnlocked, setIsGameUnlocked] = useState(false);
+  const [gamePlayer, setGamePlayer] = useState(() =>
+    getClassBlocksPlayer({ mode: 'login', credentials: { email: '' }, registerForm: { email: '', name: '' }, users })
+  );
+  const [classBlocksLeaderboard, setClassBlocksLeaderboard] = useState(() =>
+    normalizeClassBlocksLeaderboard(readClassBlocksLeaderboard())
+  );
   const shellRef = useRef(null);
   const cardRef = useRef(null);
   const panelsRef = useRef(null);
@@ -555,6 +1102,36 @@ const LoginPage = ({
     isGameUnlocked
   ]);
 
+  useEffect(() => {
+    let isActive = true;
+
+    const syncLeaderboard = async () => {
+      const cloudScores = await readDbValue(CLASSBLOCKS_DB_KEY, readClassBlocksLeaderboard());
+
+      if (!isActive) {
+        return;
+      }
+
+      const normalizedScores = normalizeClassBlocksLeaderboard(cloudScores);
+      setClassBlocksLeaderboard(normalizedScores);
+      writeClassBlocksLeaderboard(normalizedScores);
+    };
+
+    syncLeaderboard().catch(() => {
+      const localScores = normalizeClassBlocksLeaderboard(readClassBlocksLeaderboard());
+      setClassBlocksLeaderboard(localScores);
+    });
+
+    const unsubscribe = subscribeToDbCollection(CLASSBLOCKS_DB_KEY, () => {
+      syncLeaderboard().catch(() => undefined);
+    });
+
+    return () => {
+      isActive = false;
+      unsubscribe();
+    };
+  }, []);
+
   const handleLoginSubmit = (event) => {
     event.preventDefault();
     const result = onLogin(credentials);
@@ -600,12 +1177,47 @@ const LoginPage = ({
 
       if (next.length >= 5) {
         window.setTimeout(() => {
+          setGamePlayer(getClassBlocksPlayer({ mode, credentials, registerForm, users }));
           setIsGameUnlocked(true);
           setFeedback('');
         }, 260);
       }
 
       return next;
+    });
+  };
+
+  const handleRecordClassBlocksScore = ({ name, score: finalScore }) => {
+    if (!Number.isFinite(finalScore) || finalScore <= 0) {
+      return;
+    }
+
+    const playerName = name.trim() || 'Guest player';
+    const playerKey = getClassBlocksPlayerKey(playerName);
+
+    setClassBlocksLeaderboard((current) => {
+      const safeCurrent = normalizeClassBlocksLeaderboard(current);
+      const existingRecord = safeCurrent.find((entry) => (entry.playerKey || entry.email) === playerKey);
+
+      if (existingRecord && existingRecord.highScore >= finalScore) {
+        return safeCurrent;
+      }
+
+      const nextRecord = {
+        id: playerKey,
+        playerKey,
+        name: playerName,
+        highScore: finalScore,
+        createdAt: existingRecord?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      const nextLeaderboard = existingRecord
+        ? safeCurrent.map((entry) => ((entry.playerKey || entry.email) === playerKey ? nextRecord : entry))
+        : [...safeCurrent, nextRecord];
+
+      writeClassBlocksLeaderboard(nextLeaderboard);
+      writeDbValue(CLASSBLOCKS_DB_KEY, nextLeaderboard).catch(() => undefined);
+      return nextLeaderboard;
     });
   };
 
@@ -619,7 +1231,7 @@ const LoginPage = ({
         <span className="auth-orb auth-orb-one" />
         <span className="auth-orb auth-orb-two" />
         <span className="auth-orb auth-orb-three" />
-        {backgroundNotes.map((note) => (
+        {backgroundNotes.slice(0, BACKGROUND_UNLOCK_BOOK_LIMIT).map((note) => (
           <button
             type="button"
             key={note.className}
@@ -677,6 +1289,9 @@ const LoginPage = ({
         <div className={`auth-panel-shell ${isGameUnlocked ? 'auth-panel-shell-game' : ''}`}>
           {isGameUnlocked && (
             <ClassBlocksGame
+              player={gamePlayer}
+              leaderboard={classBlocksLeaderboard}
+              onRecordScore={handleRecordClassBlocksScore}
               onExit={() => {
                 setIsGameUnlocked(false);
                 setPoppedBooks([]);

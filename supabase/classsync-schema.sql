@@ -27,6 +27,13 @@ create table if not exists public.classsync_forum_posts (
   updated_at timestamptz not null default timezone('utc', now())
 );
 
+create table if not exists public.classsync_game_scores (
+  id text primary key,
+  payload jsonb not null,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
 create table if not exists public.classsync_messages (
   id text primary key,
   payload jsonb not null,
@@ -58,6 +65,7 @@ create table if not exists public.classsync_notifications (
 create index if not exists classsync_users_updated_at_idx on public.classsync_users (updated_at desc);
 create index if not exists classsync_notes_updated_at_idx on public.classsync_notes (updated_at desc);
 create index if not exists classsync_forum_posts_updated_at_idx on public.classsync_forum_posts (updated_at desc);
+create index if not exists classsync_game_scores_updated_at_idx on public.classsync_game_scores (updated_at desc);
 create index if not exists classsync_messages_updated_at_idx on public.classsync_messages (updated_at desc);
 create index if not exists classsync_rooms_updated_at_idx on public.classsync_rooms (updated_at desc);
 create index if not exists classsync_reports_updated_at_idx on public.classsync_reports (updated_at desc);
@@ -67,6 +75,7 @@ alter table public.app_state enable row level security;
 alter table public.classsync_users enable row level security;
 alter table public.classsync_notes enable row level security;
 alter table public.classsync_forum_posts enable row level security;
+alter table public.classsync_game_scores enable row level security;
 alter table public.classsync_messages enable row level security;
 alter table public.classsync_rooms enable row level security;
 alter table public.classsync_reports enable row level security;
@@ -75,6 +84,7 @@ alter table public.classsync_notifications enable row level security;
 alter table public.classsync_users replica identity full;
 alter table public.classsync_notes replica identity full;
 alter table public.classsync_forum_posts replica identity full;
+alter table public.classsync_game_scores replica identity full;
 alter table public.classsync_messages replica identity full;
 alter table public.classsync_rooms replica identity full;
 alter table public.classsync_reports replica identity full;
@@ -88,6 +98,7 @@ begin
     'classsync_users',
     'classsync_notes',
     'classsync_forum_posts',
+    'classsync_game_scores',
     'classsync_messages',
     'classsync_rooms',
     'classsync_reports',
@@ -197,6 +208,31 @@ with check (true);
 drop policy if exists "ClassSync forum posts can be deleted by everyone" on public.classsync_forum_posts;
 create policy "ClassSync forum posts can be deleted by everyone"
 on public.classsync_forum_posts
+for delete
+using (true);
+
+drop policy if exists "ClassSync game scores are readable by everyone" on public.classsync_game_scores;
+create policy "ClassSync game scores are readable by everyone"
+on public.classsync_game_scores
+for select
+using (true);
+
+drop policy if exists "ClassSync game scores can be inserted by everyone" on public.classsync_game_scores;
+create policy "ClassSync game scores can be inserted by everyone"
+on public.classsync_game_scores
+for insert
+with check (true);
+
+drop policy if exists "ClassSync game scores can be updated by everyone" on public.classsync_game_scores;
+create policy "ClassSync game scores can be updated by everyone"
+on public.classsync_game_scores
+for update
+using (true)
+with check (true);
+
+drop policy if exists "ClassSync game scores can be deleted by everyone" on public.classsync_game_scores;
+create policy "ClassSync game scores can be deleted by everyone"
+on public.classsync_game_scores
 for delete
 using (true);
 
@@ -344,6 +380,21 @@ set
   payload = excluded.payload,
   created_at = least(public.classsync_forum_posts.created_at, excluded.created_at),
   updated_at = greatest(public.classsync_forum_posts.updated_at, excluded.updated_at);
+
+insert into public.classsync_game_scores (id, payload, created_at, updated_at)
+select
+  coalesce(item ->> 'id', item ->> 'playerKey', gen_random_uuid()::text) as id,
+  item as payload,
+  coalesce((item ->> 'createdAt')::timestamptz, timezone('utc', now())) as created_at,
+  coalesce((item ->> 'updatedAt')::timestamptz, (item ->> 'createdAt')::timestamptz, timezone('utc', now())) as updated_at
+from public.app_state legacy,
+  lateral jsonb_array_elements(legacy.value) as item
+where legacy.key = 'gameScores'
+on conflict (id) do update
+set
+  payload = excluded.payload,
+  created_at = least(public.classsync_game_scores.created_at, excluded.created_at),
+  updated_at = greatest(public.classsync_game_scores.updated_at, excluded.updated_at);
 
 insert into public.classsync_messages (id, payload, created_at, updated_at)
 select
