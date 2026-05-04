@@ -5,6 +5,7 @@ import BrandLogo from '../components/BrandLogo';
 import { readDbValue, subscribeToDbCollection, writeDbValue } from '../lib/classsyncDb';
 
 const GAME_BOARD_SIZE = 8;
+const CLASSBLOCKS_DRAG_LIFT = 72;
 const CLASSBLOCKS_LEADERBOARD_KEY = 'classblocks-leaderboard-v1';
 const CLASSBLOCKS_DB_KEY = 'gameScores';
 const BACKGROUND_UNLOCK_BOOK_LIMIT = 5;
@@ -386,7 +387,7 @@ const ClassBlocksGame = ({ player, leaderboard, onRecordScore, onExit }) => {
   const [draggedPieceId, setDraggedPieceId] = useState(null);
   const [dragPosition, setDragPosition] = useState(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [dragPreviewMetrics, setDragPreviewMetrics] = useState({ cellSize: 18, gapSize: 4 });
+  const [dragPreviewMetrics, setDragPreviewMetrics] = useState({ cellSize: 18, gapSize: 4, lift: CLASSBLOCKS_DRAG_LIFT });
   const [clearingCells, setClearingCells] = useState(() => new Set());
   const [previewLineCells, setPreviewLineCells] = useState(() => new Set());
   const [isClearing, setIsClearing] = useState(false);
@@ -414,7 +415,7 @@ const ClassBlocksGame = ({ player, leaderboard, onRecordScore, onExit }) => {
     setDraggedPieceId(null);
     setDragPosition(null);
     setDragOffset({ x: 0, y: 0 });
-    setDragPreviewMetrics({ cellSize: 18, gapSize: 4 });
+    setDragPreviewMetrics({ cellSize: 18, gapSize: 4, lift: CLASSBLOCKS_DRAG_LIFT });
     setPreviewLineCells(new Set());
   };
 
@@ -606,7 +607,7 @@ const ClassBlocksGame = ({ player, leaderboard, onRecordScore, onExit }) => {
           ? grabbedCellY * (cellSize + gapSize) + grabbedDotProgressY * cellSize
           : previewHeight / 2
     });
-    setDragPreviewMetrics({ cellSize, gapSize });
+    setDragPreviewMetrics({ cellSize, gapSize, lift: CLASSBLOCKS_DRAG_LIFT });
     setMessage('Drop the piece onto the board.');
   };
 
@@ -738,7 +739,11 @@ const ClassBlocksGame = ({ player, leaderboard, onRecordScore, onExit }) => {
     const previewOriginX =
       pointerX - dragOffset.x + firstRenderedCell.x * (dragPreviewMetrics.cellSize + dragPreviewMetrics.gapSize) + dragPreviewMetrics.cellSize / 2;
     const previewOriginY =
-      pointerY - dragOffset.y + firstRenderedCell.y * (dragPreviewMetrics.cellSize + dragPreviewMetrics.gapSize) + dragPreviewMetrics.cellSize / 2;
+      pointerY -
+      dragPreviewMetrics.lift -
+      dragOffset.y +
+      firstRenderedCell.y * (dragPreviewMetrics.cellSize + dragPreviewMetrics.gapSize) +
+      dragPreviewMetrics.cellSize / 2;
     const dropOrigin = getDropOriginFromCoordinates(piece, previewOriginX, previewOriginY);
 
     if (!dropOrigin || !canPlacePiece(board, piece, dropOrigin.row, dropOrigin.col)) {
@@ -952,7 +957,7 @@ const ClassBlocksGame = ({ player, leaderboard, onRecordScore, onExit }) => {
               '--drag-cell-size': `${dragPreviewMetrics.cellSize}px`,
               '--drag-gap-size': `${dragPreviewMetrics.gapSize}px`,
               left: dragPosition.x - dragOffset.x,
-              top: dragPosition.y - dragOffset.y
+              top: dragPosition.y - dragPreviewMetrics.lift - dragOffset.y
             }}
             aria-hidden="true"
           >
