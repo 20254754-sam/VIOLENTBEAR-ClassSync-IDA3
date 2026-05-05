@@ -34,7 +34,7 @@ const MentionText = ({ text }) =>
     )
   );
 
-const ForumPage = ({ currentUser, users = [], posts, onCreatePost, onVote, onComment, onReport }) => {
+const ForumPage = ({ currentUser, users = [], posts, onCreatePost, onVote, onComment, onReport, onDeletePost }) => {
   const [postForm, setPostForm] = useState({
     title: '',
     body: '',
@@ -169,23 +169,40 @@ const ForumPage = ({ currentUser, users = [], posts, onCreatePost, onVote, onCom
                     {post.authorName} - {formatDate(post.createdAt)}
                   </small>
                 </div>
-                {currentUser.id !== post.authorId && (
-                  <button
-                    type="button"
-                    className="report-icon-button"
-                    aria-label={`Report post: ${post.title}`}
-                    onClick={() =>
-                      onReport({
-                        targetId: post.id,
-                        targetType: 'forum-post',
-                        targetTitle: post.title,
-                        roomId: post.roomId
-                      })
-                    }
-                  >
-                    <ReportIcon />
-                  </button>
-                )}
+                <div className="forum-post-action-row">
+                  {(currentUser.role === 'admin' || currentUser.id === post.authorId) && (
+                    <button
+                      type="button"
+                      className="forum-delete-button"
+                      onClick={() => {
+                        const shouldDelete = window.confirm(`Delete "${post.title}" from the forum?`);
+
+                        if (shouldDelete) {
+                          onDeletePost(post.id);
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+                  )}
+                  {currentUser.id !== post.authorId && (
+                    <button
+                      type="button"
+                      className="report-icon-button"
+                      aria-label={`Report post: ${post.title}`}
+                      onClick={() =>
+                        onReport({
+                          targetId: post.id,
+                          targetType: 'forum-post',
+                          targetTitle: post.title,
+                          roomId: post.roomId
+                        })
+                      }
+                    >
+                      <ReportIcon />
+                    </button>
+                  )}
+                </div>
               </div>
               <h3>{post.title}</h3>
               <p>{post.body}</p>

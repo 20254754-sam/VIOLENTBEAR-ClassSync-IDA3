@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import ForumVoteControls from '../components/ForumVoteControls';
 import {
@@ -54,10 +54,12 @@ const RoomDetailsPage = ({
   onMarkRoomMessagesRead,
   onVotePost,
   onCommentPost,
+  onDeletePost,
   onReportPost,
   onToggleLike,
   onDeleteNote,
   onJoinRoom,
+  onRefreshRooms,
   onPromoteMember,
   onKickMember,
   getRoomLink
@@ -115,6 +117,24 @@ const RoomDetailsPage = ({
   const isComposerVisible = showComposer || Boolean(roomEditingNote);
   const mentionUsers = members.filter((member) => member.id !== currentUser.id);
 
+  useEffect(() => {
+    if (!room) {
+      return undefined;
+    }
+
+    const refreshRooms = () => {
+      Promise.resolve(onRefreshRooms?.()).catch(() => undefined);
+    };
+    const refreshTimer = window.setInterval(refreshRooms, 5000);
+
+    window.addEventListener('focus', refreshRooms);
+
+    return () => {
+      window.clearInterval(refreshTimer);
+      window.removeEventListener('focus', refreshRooms);
+    };
+  }, [onRefreshRooms, room]);
+
   if (!room) {
     return (
       <div className="page">
@@ -141,6 +161,10 @@ const RoomDetailsPage = ({
     });
 
     setFeedback(result.message);
+
+    if (result.success) {
+      Promise.resolve(onRefreshRooms?.()).catch(() => undefined);
+    }
   };
 
   const handleRoomNoteSubmit = (noteInput) => {
@@ -453,23 +477,41 @@ const RoomDetailsPage = ({
                             {post.authorName} - {formatDate(post.createdAt)}
                           </small>
                         </div>
-                        {currentUser.id !== post.authorId && (
-                          <button
-                            type="button"
-                            className="report-icon-button"
-                            aria-label={`Report post: ${post.title}`}
-                            onClick={() =>
-                              onReportPost({
-                                targetId: post.id,
-                                targetType: 'forum-post',
-                                targetTitle: post.title,
-                                roomId: room.id
-                              })
-                            }
-                          >
-                            <ReportIcon />
-                          </button>
-                        )}
+                        <div className="forum-post-action-row">
+                          {(currentUser.role === 'admin' || isRoomAdmin || currentUser.id === post.authorId) && (
+                            <button
+                              type="button"
+                              className="forum-delete-button"
+                              onClick={() => {
+                                const shouldDelete = window.confirm(`Delete "${post.title}" from this room forum?`);
+
+                                if (shouldDelete) {
+                                  const result = onDeletePost(post.id);
+                                  setFeedback(result.message);
+                                }
+                              }}
+                            >
+                              Delete
+                            </button>
+                          )}
+                          {currentUser.id !== post.authorId && (
+                            <button
+                              type="button"
+                              className="report-icon-button"
+                              aria-label={`Report post: ${post.title}`}
+                              onClick={() =>
+                                onReportPost({
+                                  targetId: post.id,
+                                  targetType: 'forum-post',
+                                  targetTitle: post.title,
+                                  roomId: room.id
+                                })
+                              }
+                            >
+                              <ReportIcon />
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <h3>{post.title}</h3>
                       <p>{post.body}</p>

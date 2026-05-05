@@ -642,7 +642,10 @@ const normalizeUserRecord = (user) => {
     joinedAt: user?.joinedAt || user?.createdAt || new Date().toISOString(),
     profilePicture: user?.profilePicture || buildDefaultProfilePicture(normalizedName, normalizedRole),
     securityQuestion: user?.securityQuestion || SECURITY_QUESTIONS[0],
-    securityAnswer: user?.securityAnswer?.trim()?.toLowerCase() || ''
+    securityAnswer: user?.securityAnswer?.trim()?.toLowerCase() || '',
+    isActive: user?.isActive !== false,
+    deactivatedAt: user?.deactivatedAt || null,
+    deactivatedByName: user?.deactivatedByName || ''
   };
 };
 
@@ -691,6 +694,7 @@ const buildSessionUser = (user) => {
     profilePicture: normalizedUser.profilePicture,
     profileVisibility: normalizedUser.profileVisibility,
     role: normalizedUser.role,
+    isActive: normalizedUser.isActive,
     updatedAt: normalizedUser.updatedAt || normalizedUser.joinedAt,
     yearLevel: normalizedUser.yearLevel
   };
@@ -785,6 +789,7 @@ function App() {
   const [theme, setTheme] = useState(() => readStorage(STORAGE_KEYS.theme, 'light'));
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [isHydrating, setIsHydrating] = useState(true);
+  const [cloudSyncError, setCloudSyncError] = useState('');
   const [hydrationProgress, setHydrationProgress] = useState(12);
   const hasSkippedInitialSync = useRef({
     forum: false,
@@ -869,6 +874,22 @@ function App() {
         { key: DB_KEYS.reports },
         { key: DB_KEYS.rooms }
       ]);
+      const snapshotValues = Object.values(storedSnapshots);
+      const hasAnyCloudAccess = snapshotValues.some((snapshot) => snapshot.hasCloudAccess);
+      const hasAnyLocalData =
+        snapshotValues.some((snapshot) => isNonEmptyArray(snapshot.localValue)) ||
+        [localUsers, localNotes, localForum, localMessages, localNotifications, localReports, localRooms].some(isNonEmptyArray);
+
+      if (isCloudSyncEnabled && !hasAnyCloudAccess && !hasAnyLocalData) {
+        const firstCloudError = snapshotValues.find((snapshot) => snapshot.cloudError)?.cloudError;
+
+        setCloudSyncError(
+          firstCloudError?.message ||
+            'ClassSync could not read the Supabase tables. Run supabase/classsync-schema.sql in the correct Supabase project.'
+        );
+      } else {
+        setCloudSyncError('');
+      }
 
       const nextUsers = resolveUsersState({
         cloudValue: storedSnapshots[DB_KEYS.users].cloudValue,
@@ -1320,6 +1341,13 @@ function App() {
       };
     }
 
+    if (matchedUser.isActive === false) {
+      return {
+        success: false,
+        message: 'This account has been deactivated by an admin.'
+      };
+    }
+
     setCurrentUser(buildSessionUser(matchedUser));
     return {
       success: true,
@@ -1429,16 +1457,27 @@ function App() {
       };
     }
 
-    setUsers((previousUsers) =>
-      previousUsers.map((user) =>
-        user.id === matchedUser.id
-          ? {
-              ...user,
-              password: trimmedPassword
-            }
-          : user
-      )
+    const updatedAt = new Date().toISOString();
+    const nextUsers = users.map((user) =>
+      user.id === matchedUser.id
+        ? normalizeUserRecord({
+            ...user,
+            password: trimmedPassword,
+            updatedAt
+          })
+        : user
     );
+
+    setUsers(nextUsers);
+    writeStorage(STORAGE_KEYS.users, nextUsers);
+    writeDbValue(DB_KEYS.users, nextUsers).catch(() => {
+      writeStorage(STORAGE_KEYS.users, nextUsers);
+    });
+
+    if (currentUser?.id === matchedUser.id) {
+      const nextSessionUser = nextUsers.find((user) => user.id === matchedUser.id);
+      setCurrentUser(buildSessionUser(nextSessionUser));
+    }
 
     return {
       success: true,
@@ -1568,20 +1607,133 @@ function App() {
       };
     }
 
-    setUsers((previousUsers) =>
-      previousUsers.map((user) =>
-        user.id === currentUserRecord.id
-          ? {
-              ...user,
-              password: newPassword.trim()
-            }
-          : user
-      )
-    );
+    const updatedAt = new Date().toISOString();
+    const nextUser = normalizeUserRecord({
+      ...currentUserRecord,
+      password: newPassword.trim(),
+      updatedAt
+    });
+    const nextUsers = users.map((user) => (user.id === currentUserRecord.id ? nextUser : user));
+
+    setUsers(nextUsers);
+    writeStorage(STORAGE_KEYS.users, nextUsers);
+    writeDbValue(DB_KEYS.users, nextUsers).catch(() => {
+      writeStorage(STORAGE_KEYS.users, nextUsers);
+    });
+    setCurrentUser(buildSessionUser(nextUser));
 
     return {
       success: true,
       message: 'Your password was updated successfully.'
+    };
+  };
+
+  const handleAdminToggleUserStatus = (targetUserId, shouldActivate) => {
+    if (currentUser?.role !== 'admin') {
+      return {
+        success: false,
+        message: 'Only admins can manage account status.'
+      };
+    }
+
+    if (targetUserId === currentUser.id) {
+      return {
+        success: false,
+        message: 'You cannot deactivate your own admin account.'
+      };
+    }
+
+    const targetUser = users.find((user) => user.id === targetUserId);
+
+    if (!targetUser) {
+      return {
+        success: false,
+        message: 'That account could not be found.'
+      };
+    }
+
+    const updatedAt = new Date().toISOString();
+    const nextUsers = users.map((user) =>
+      user.id === targetUserId
+        ? normalizeUserRecord({
+            ...user,
+            isActive: shouldActivate,
+            deactivatedAt: shouldActivate ? null : updatedAt,
+            deactivatedByName: shouldActivate ? '' : currentUser.name,
+            updatedAt
+          })
+        : user
+    );
+
+    setUsers(nextUsers);
+    writeStorage(STORAGE_KEYS.users, nextUsers);
+    writeDbValue(DB_KEYS.users, nextUsers).catch(() => {
+      writeStorage(STORAGE_KEYS.users, nextUsers);
+    });
+
+    return {
+      success: true,
+      message: shouldActivate ? `${targetUser.name} can log in again.` : `${targetUser.name} has been deactivated.`
+    };
+  };
+
+  const handleAdminDeleteUser = (targetUserId) => {
+    if (currentUser?.role !== 'admin') {
+      return {
+        success: false,
+        message: 'Only admins can delete accounts.'
+      };
+    }
+
+    if (targetUserId === currentUser.id) {
+      return {
+        success: false,
+        message: 'You cannot delete your own admin account.'
+      };
+    }
+
+    const targetUser = users.find((user) => user.id === targetUserId);
+
+    if (!targetUser) {
+      return {
+        success: false,
+        message: 'That account could not be found.'
+      };
+    }
+
+    const nextUsers = users.filter((user) => user.id !== targetUserId);
+    const nextRooms = rooms.map((room) => ({
+      ...room,
+      adminIds: (room.adminIds || []).filter((adminId) => adminId !== targetUserId),
+      memberIds: (room.memberIds || []).filter((memberId) => memberId !== targetUserId),
+      updatedAt: new Date().toISOString()
+    }));
+    const nextNotifications = notifications.filter((notification) => notification.targetUserId !== targetUserId);
+    const nextMessages = messages.filter((message) => !(message.participants || []).includes(targetUserId));
+
+    setUsers(nextUsers);
+    setRooms(nextRooms);
+    setNotifications(nextNotifications);
+    setMessages(nextMessages);
+    writeCollectionStorage({
+      users: nextUsers,
+      notes,
+      forumPosts,
+      messages: nextMessages,
+      notifications: nextNotifications,
+      reports,
+      rooms: nextRooms
+    });
+    Promise.all([
+      deleteDbItem(DB_KEYS.users, targetUserId).catch(() => undefined),
+      writeDbValue(DB_KEYS.rooms, nextRooms).catch(() => undefined),
+      writeDbValue(DB_KEYS.notifications, nextNotifications).catch(() => undefined),
+      writeDbValue(DB_KEYS.messages, nextMessages).catch(() => undefined)
+    ]);
+
+    return {
+      success: true,
+      message: `${targetUser.name}'s account has been deleted.`
     };
   };
 
@@ -2262,6 +2414,41 @@ function App() {
     setForumPosts((previousPosts) => [newPost, ...previousPosts]);
   };
 
+  const handleDeleteForumPost = (postId) => {
+    if (!currentUser) {
+      return {
+        success: false,
+        message: 'Please log in before deleting a forum post.'
+      };
+    }
+
+    const targetPost = forumPosts.find((post) => String(post.id) === String(postId));
+
+    if (!targetPost) {
+      return {
+        success: false,
+        message: 'That forum post could not be found.'
+      };
+    }
+
+    const canDeletePost = currentUser.role === 'admin' || targetPost.authorId === currentUser.id;
+
+    if (!canDeletePost) {
+      return {
+        success: false,
+        message: 'Only admins and post authors can delete this forum post.'
+      };
+    }
+
+    setForumPosts((previousPosts) => previousPosts.filter((post) => String(post.id) !== String(postId)));
+    deleteDbItem(DB_KEYS.forum, postId).catch(() => undefined);
+
+    return {
+      success: true,
+      message: 'Forum post deleted.'
+    };
+  };
+
   const handleVoteForumPost = (postId, direction) => {
     if (!currentUser) {
       return;
@@ -2394,6 +2581,7 @@ function App() {
       ownerId: currentUser.id,
       ownerName: currentUser.name,
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       adminIds: [currentUser.id],
       memberIds: [currentUser.id]
     };
@@ -2446,7 +2634,8 @@ function App() {
 
     const updatedRoom = {
       ...matchedRoom,
-      memberIds: [...matchedRoom.memberIds, currentUser.id]
+      memberIds: [...new Set([...matchedRoom.memberIds, currentUser.id])],
+      updatedAt: new Date().toISOString()
     };
 
     const nextRooms = latestRooms.map((room) => (room.id === matchedRoom.id ? updatedRoom : room));
@@ -2462,21 +2651,25 @@ function App() {
   };
 
   const handlePromoteRoomMember = (roomId, memberId) => {
-    setRooms((previousRooms) =>
-      previousRooms.map((room) =>
+    const nextRooms = rooms.map((room) =>
         room.id === roomId
           ? {
               ...room,
-              adminIds: [...new Set([...(room.adminIds || []), memberId])]
+              adminIds: [...new Set([...(room.adminIds || []), memberId])],
+              updatedAt: new Date().toISOString()
             }
           : room
-      )
-    );
+      );
+
+    setRooms(nextRooms);
+    writeStorage(STORAGE_KEYS.rooms, nextRooms);
+    writeDbValue(DB_KEYS.rooms, nextRooms).catch(() => {
+      writeStorage(STORAGE_KEYS.rooms, nextRooms);
+    });
   };
 
   const handleKickRoomMember = (roomId, memberId) => {
-    setRooms((previousRooms) =>
-      previousRooms.map((room) => {
+    const nextRooms = rooms.map((room) => {
         if (room.id !== roomId || memberId === room.ownerId) {
           return room;
         }
@@ -2484,10 +2677,16 @@ function App() {
         return {
           ...room,
           adminIds: (room.adminIds || []).filter((adminId) => adminId !== memberId),
-          memberIds: room.memberIds.filter((currentMemberId) => currentMemberId !== memberId)
+          memberIds: room.memberIds.filter((currentMemberId) => currentMemberId !== memberId),
+          updatedAt: new Date().toISOString()
         };
-      })
-    );
+      });
+
+    setRooms(nextRooms);
+    writeStorage(STORAGE_KEYS.rooms, nextRooms);
+    writeDbValue(DB_KEYS.rooms, nextRooms).catch(() => {
+      writeStorage(STORAGE_KEYS.rooms, nextRooms);
+    });
   };
 
   const sortedForumPosts = useMemo(
@@ -2526,6 +2725,31 @@ function App() {
             <div className="app-loading-progress-bar" style={{ width: `${hydrationProgress}%` }} />
           </div>
           <small>{hydrationProgress}% completed</small>
+        </div>
+      </div>
+    );
+  }
+
+  if (cloudSyncError) {
+    return (
+      <div className="app">
+        <div className="app-loading-screen">
+          <div className="app-loading-card app-cloud-error-card">
+            <div className="brand-logo">
+              <span className="brand-mark">CS</span>
+              <span>ClassSync</span>
+            </div>
+            <p className="auth-eyebrow">Cloud sync needs setup</p>
+            <h1>Supabase is not returning the ClassSync tables.</h1>
+            <p>
+              Fresh devices will only see built-in/demo data until the SQL schema exists in the same Supabase
+              project used by this deployed app.
+            </p>
+            <p className="app-cloud-error-detail">{cloudSyncError}</p>
+            <button type="button" onClick={() => window.location.reload()}>
+              Retry connection
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -2661,6 +2885,8 @@ function App() {
                 onUpdateProfile={handleUpdateProfile}
                 onPreviewProfilePicture={handlePreviewProfilePicture}
                 onChangePassword={handleChangePassword}
+                onAdminToggleUserStatus={handleAdminToggleUserStatus}
+                onAdminDeleteUser={handleAdminDeleteUser}
               />
             }
           />
@@ -2677,6 +2903,8 @@ function App() {
                 onUpdateProfile={handleUpdateProfile}
                 onPreviewProfilePicture={handlePreviewProfilePicture}
                 onChangePassword={handleChangePassword}
+                onAdminToggleUserStatus={handleAdminToggleUserStatus}
+                onAdminDeleteUser={handleAdminDeleteUser}
               />
             }
           />
@@ -2702,6 +2930,7 @@ function App() {
                 onVote={handleVoteForumPost}
                 onComment={handleCommentOnPost}
                 onReport={requestReportItem}
+                onDeletePost={handleDeleteForumPost}
               />
             }
           />
@@ -2736,10 +2965,12 @@ function App() {
                 onMarkRoomMessagesRead={handleMarkRoomMessagesRead}
                 onVotePost={handleVoteForumPost}
                 onCommentPost={handleCommentOnPost}
+                onDeletePost={handleDeleteForumPost}
                 onReportPost={requestReportItem}
                 onToggleLike={handleToggleLike}
                 onDeleteNote={requestDeleteNote}
                 onJoinRoom={handleJoinRoom}
+                onRefreshRooms={loadLatestRooms}
                 onPromoteMember={handlePromoteRoomMember}
                 onKickMember={handleKickRoomMember}
                 getRoomLink={buildRoomLink}

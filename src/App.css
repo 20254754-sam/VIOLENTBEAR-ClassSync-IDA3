@@ -1713,6 +1713,44 @@ button:active,
   font-weight: 700;
 }
 
+.profile-admin-danger-zone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 1rem 0;
+  padding: 1rem;
+  border-radius: 22px;
+  border: 1px solid rgba(214, 82, 82, 0.18);
+  background:
+    radial-gradient(circle at top right, rgba(214, 82, 82, 0.1), transparent 34%),
+    var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.profile-admin-danger-zone h2,
+.profile-admin-danger-zone p {
+  margin: 0;
+}
+
+.profile-admin-danger-zone h2 {
+  margin-top: 0.2rem;
+}
+
+.profile-admin-danger-zone p {
+  max-width: 62ch;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.profile-admin-danger-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  flex-shrink: 0;
+}
+
 .note-header {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -2032,6 +2070,33 @@ html[data-theme='dark'] .star-rating-button-active {
   align-items: center;
   gap: 0.55rem 0.8rem;
   min-width: 0;
+}
+
+.forum-post-action-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.42rem;
+  flex-shrink: 0;
+}
+
+.forum-delete-button {
+  min-height: 38px;
+  min-width: 0;
+  padding: 0 0.78rem;
+  border-radius: 13px;
+  border: 1px solid rgba(214, 82, 82, 0.18);
+  background: rgba(214, 82, 82, 0.08);
+  color: var(--danger);
+  box-shadow: none;
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.forum-delete-button:hover {
+  background: var(--danger-soft);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(214, 82, 82, 0.12);
 }
 
 .forum-comment-toggle-row {
@@ -5037,6 +5102,41 @@ html[data-theme='dark'] .app-footer {
   display: block;
   margin-top: 0.8rem;
   color: var(--muted);
+}
+
+.app-cloud-error-card {
+  max-width: 560px;
+  text-align: left;
+}
+
+.app-cloud-error-card .brand-logo {
+  justify-content: flex-start;
+  margin-bottom: 0.9rem;
+}
+
+.app-cloud-error-card h1 {
+  margin: 0.2rem 0 0.65rem;
+  font-size: clamp(1.6rem, 4vw, 2.1rem);
+  line-height: 1.08;
+}
+
+.app-cloud-error-card p {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.app-cloud-error-detail {
+  padding: 0.75rem 0.85rem;
+  border-radius: 16px;
+  background: rgba(214, 82, 82, 0.1);
+  color: var(--danger) !important;
+  font-size: 0.88rem;
+  font-weight: 800;
+  word-break: break-word;
+}
+
+.app-cloud-error-card button {
+  margin-top: 0.4rem;
 }
 
 .app-loading-progress {
@@ -8567,6 +8667,7 @@ html[data-theme='dark'] .email-shortcut-field,
 html[data-theme='dark'] .auth-recovery-box,
 html[data-theme='dark'] .profile-edit-panel,
 html[data-theme='dark'] .profile-details-panel,
+html[data-theme='dark'] .profile-admin-danger-zone,
 html[data-theme='dark'] .attachment-details-panel,
 html[data-theme='dark'] .user-search-card,
 html[data-theme='dark'] .messages-sidebar,
@@ -8913,6 +9014,30 @@ html[data-theme='dark'] .profile-details-panel strong {
 
   .profile-page-public .profile-details-panel strong {
     font-size: 0.72rem;
+  }
+
+  .profile-admin-danger-zone {
+    display: grid;
+    gap: 0.72rem;
+    padding: 0.82rem;
+    border-radius: 18px;
+  }
+
+  .profile-admin-danger-zone h2 {
+    font-size: 1rem;
+  }
+
+  .profile-admin-danger-zone p {
+    font-size: 0.78rem;
+    line-height: 1.4;
+  }
+
+  .profile-admin-danger-actions {
+    justify-content: stretch;
+  }
+
+  .profile-admin-danger-actions button {
+    width: 100%;
   }
 
   .profile-page-public .profile-stat-grid {

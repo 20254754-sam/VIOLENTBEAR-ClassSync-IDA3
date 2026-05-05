@@ -57,7 +57,9 @@ const ProfilePage = ({
   onEdit,
   onUpdateProfile,
   onPreviewProfilePicture,
-  onChangePassword
+  onChangePassword,
+  onAdminToggleUserStatus,
+  onAdminDeleteUser
 }) => {
   const { userId } = useParams();
   const location = useLocation();
@@ -78,6 +80,7 @@ const ProfilePage = ({
   const pendingNotes = visibleNotes.filter((note) => note.status === 'pending');
   const rejectedNotes = visibleNotes.filter((note) => note.status === 'rejected');
   const isAdmin = profileUser.role === 'admin';
+  const canAdminManageProfile = currentUser.role === 'admin' && !isOwnProfile;
   const isPrivateToViewer = !isOwnProfile && profileUser.profileVisibility === 'private';
   const profileBackTo = location.state?.from || sessionStorage.getItem('classsync-profile-return-route') || '/browse';
   const [profileForm, setProfileForm] = useState({
@@ -95,6 +98,7 @@ const ProfilePage = ({
   });
   const [passwordFeedback, setPasswordFeedback] = useState('');
   const [profileImagePreview, setProfileImagePreview] = useState(profileUser.profilePicture || '');
+  const [adminAccountFeedback, setAdminAccountFeedback] = useState('');
   const [isPasswordEditorOpen, setIsPasswordEditorOpen] = useState(false);
   const [isProfileImageProcessing, setIsProfileImageProcessing] = useState(false);
 
@@ -165,6 +169,30 @@ const ProfilePage = ({
     }
   };
 
+  const handleToggleAccountStatus = () => {
+    const nextStatus = profileUser.isActive === false;
+    const result = onAdminToggleUserStatus(profileUser.id, nextStatus);
+
+    setAdminAccountFeedback(result.message);
+  };
+
+  const handleDeleteAccount = () => {
+    const shouldDelete = window.confirm(
+      `Delete ${profileUser.name}'s account? This removes the account from ClassSync and cannot be undone.`
+    );
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    const result = onAdminDeleteUser(profileUser.id);
+    setAdminAccountFeedback(result.message);
+
+    if (result.success) {
+      navigate('/browse');
+    }
+  };
+
   if (!profileUser) {
     return (
       <div className="page">
@@ -197,6 +225,9 @@ const ProfilePage = ({
             <p>{isPrivateToViewer ? 'This profile is private, but shared notes remain visible.' : profileUser.bio}</p>
             <div className="profile-public-badge-row">
               <div className="profile-role-badge">{profileUser.role}</div>
+              {profileUser.isActive === false && (
+                <span className="ownership-badge ownership-badge-referenced">Deactivated</span>
+              )}
               {!isOwnProfile && <span className="ownership-badge ownership-badge-original">{approvedNotes.length} public notes</span>}
             </div>
             {!isOwnProfile && (
@@ -212,8 +243,31 @@ const ProfilePage = ({
           <p><strong>Year level:</strong> {isPrivateToViewer ? 'Private' : profileUser.yearLevel || 'Not set yet'}</p>
           <p><strong>Visibility:</strong> {profileUser.profileVisibility}</p>
           <p><strong>Role:</strong> {profileUser.role}</p>
+          <p><strong>Status:</strong> {profileUser.isActive === false ? 'Deactivated' : 'Active'}</p>
         </div>
       </div>
+
+      {canAdminManageProfile && (
+        <section className="profile-admin-danger-zone">
+          <div>
+            <span className="dashboard-strip-label">Admin account tools</span>
+            <h2>Manage this account</h2>
+            <p>
+              Deactivate to temporarily block login while keeping the profile. Delete removes the user account
+              from ClassSync and cleans up room memberships.
+            </p>
+          </div>
+          <div className="profile-admin-danger-actions">
+            <button type="button" className="secondary-button" onClick={handleToggleAccountStatus}>
+              {profileUser.isActive === false ? 'Reactivate account' : 'Deactivate account'}
+            </button>
+            <button type="button" className="card-link-button card-link-button-danger" onClick={handleDeleteAccount}>
+              Delete account
+            </button>
+          </div>
+          {adminAccountFeedback && <p className="auth-feedback">{adminAccountFeedback}</p>}
+        </section>
+      )}
 
       <div className="profile-stat-grid">
         <div className="summary-card">
