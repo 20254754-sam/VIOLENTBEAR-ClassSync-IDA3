@@ -701,8 +701,10 @@ const buildInitialUsers = (storedUsers) => {
   return normalizeUserCollection(nextUsers);
 };
 
-const buildInitialNotes = (storedNotes) =>
-  normalizeNotes(mergeSeedNotes(Array.isArray(storedNotes) && storedNotes.length > 0 ? storedNotes : INITIAL_NOTES));
+const buildInitialNotes = (storedNotes, includeSeedNotes = true) => {
+  const nextNotes = Array.isArray(storedNotes) && storedNotes.length > 0 ? storedNotes : INITIAL_NOTES;
+  return normalizeNotes(includeSeedNotes ? mergeSeedNotes(nextNotes) : nextNotes);
+};
 
 const buildInitialForumPosts = (storedPosts) =>
   normalizeForumPosts(Array.isArray(storedPosts) && storedPosts.length > 0 ? storedPosts : INITIAL_FORUM_POSTS);
@@ -721,26 +723,30 @@ const buildInitialNotifications = (storedNotifications) =>
 const buildInitialMessages = (storedMessages) =>
   normalizeMessages(Array.isArray(storedMessages) && storedMessages.length > 0 ? storedMessages : INITIAL_MESSAGES);
 
+const preferCloudCollection = (cloudValue) => (isNonEmptyArray(cloudValue) ? cloudValue : null);
+
 const resolveUsersState = ({ cloudValue, localDbValue, localStorageValue }) =>
-  buildInitialUsers(mergeCollections(DEMO_USERS, localStorageValue, localDbValue, cloudValue));
+  buildInitialUsers(preferCloudCollection(cloudValue) || mergeCollections(DEMO_USERS, localStorageValue, localDbValue));
 
 const resolveNotesState = ({ cloudValue, localDbValue, localStorageValue }) =>
-  buildInitialNotes(mergeCollections(INITIAL_NOTES, localStorageValue, localDbValue, cloudValue));
+  preferCloudCollection(cloudValue)
+    ? buildInitialNotes(cloudValue, false)
+    : buildInitialNotes(mergeCollections(INITIAL_NOTES, localStorageValue, localDbValue));
 
 const resolveForumState = ({ cloudValue, localDbValue, localStorageValue }) =>
-  buildInitialForumPosts(mergeCollections(INITIAL_FORUM_POSTS, localStorageValue, localDbValue, cloudValue));
+  buildInitialForumPosts(preferCloudCollection(cloudValue) || mergeCollections(INITIAL_FORUM_POSTS, localStorageValue, localDbValue));
 
 const resolveRoomsState = ({ cloudValue, localDbValue, localStorageValue }) =>
-  buildInitialRooms(mergeCollections(INITIAL_ROOMS, localStorageValue, localDbValue, cloudValue));
+  buildInitialRooms(preferCloudCollection(cloudValue) || mergeCollections(INITIAL_ROOMS, localStorageValue, localDbValue));
 
 const resolveReportsState = ({ cloudValue, localDbValue, localStorageValue }) =>
-  buildInitialReports(mergeCollections(INITIAL_REPORTS, localStorageValue, localDbValue, cloudValue));
+  buildInitialReports(preferCloudCollection(cloudValue) || mergeCollections(INITIAL_REPORTS, localStorageValue, localDbValue));
 
 const resolveNotificationsState = ({ cloudValue, localDbValue, localStorageValue }) =>
-  buildInitialNotifications(mergeCollections(INITIAL_NOTIFICATIONS, localStorageValue, localDbValue, cloudValue));
+  buildInitialNotifications(preferCloudCollection(cloudValue) || mergeCollections(INITIAL_NOTIFICATIONS, localStorageValue, localDbValue));
 
 const resolveMessagesState = ({ cloudValue, localDbValue, localStorageValue }) =>
-  buildInitialMessages(mergeCollections(INITIAL_MESSAGES, localStorageValue, localDbValue, cloudValue));
+  buildInitialMessages(preferCloudCollection(cloudValue) || mergeCollections(INITIAL_MESSAGES, localStorageValue, localDbValue));
 
 const generateRoomCode = (existingRooms) => {
   const existingCodes = new Set(existingRooms.map((room) => room.code));
@@ -846,13 +852,13 @@ function App() {
     }, 160);
 
     const hydrateDatabase = async () => {
-      const localUsers = readStorage(STORAGE_KEYS.users, DEMO_USERS);
-      const localNotes = readStorage(STORAGE_KEYS.notes, INITIAL_NOTES);
-      const localForum = readStorage(STORAGE_KEYS.forum, INITIAL_FORUM_POSTS);
-      const localMessages = readStorage(STORAGE_KEYS.messages, INITIAL_MESSAGES);
-      const localNotifications = readStorage(STORAGE_KEYS.notifications, INITIAL_NOTIFICATIONS);
-      const localReports = readStorage(STORAGE_KEYS.reports, INITIAL_REPORTS);
-      const localRooms = readStorage(STORAGE_KEYS.rooms, INITIAL_ROOMS);
+      const localUsers = readStorage(STORAGE_KEYS.users, undefined);
+      const localNotes = readStorage(STORAGE_KEYS.notes, undefined);
+      const localForum = readStorage(STORAGE_KEYS.forum, undefined);
+      const localMessages = readStorage(STORAGE_KEYS.messages, undefined);
+      const localNotifications = readStorage(STORAGE_KEYS.notifications, undefined);
+      const localReports = readStorage(STORAGE_KEYS.reports, undefined);
+      const localRooms = readStorage(STORAGE_KEYS.rooms, undefined);
 
       const storedSnapshots = await readManyDbSnapshots([
         { key: DB_KEYS.users },
@@ -948,7 +954,7 @@ function App() {
           }
 
           if (!isNonEmptyArray(snapshot.cloudValue)) {
-            return isNonEmptyArray(snapshot.localValue) || nextValue.length > 0;
+            return isNonEmptyArray(snapshot.localValue);
           }
 
           return !areCollectionsEqual(snapshot.cloudValue, nextValue);
