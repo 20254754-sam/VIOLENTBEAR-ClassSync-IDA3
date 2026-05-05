@@ -52,6 +52,7 @@ const DB_KEYS = {
 
 const CANONICAL_ADMIN_EMAIL = 'admin@classsync.com';
 const LEGACY_ADMIN_EMAIL = 'admin@classsync.demo';
+const LEGACY_DEMO_EMAIL_DOMAIN = '@classsync.demo';
 
 const ScrollToTop = () => {
   const { pathname } = useLocation();
@@ -659,6 +660,14 @@ const normalizeUserCollection = (users) => {
   const hasCanonicalAdmin = normalizedUsers.some((user) => user.email === CANONICAL_ADMIN_EMAIL);
 
   return normalizedUsers.filter((user, index) => {
+    if (
+      user.email.endsWith(LEGACY_DEMO_EMAIL_DOMAIN) &&
+      user.email !== LEGACY_ADMIN_EMAIL &&
+      user.email !== CANONICAL_ADMIN_EMAIL
+    ) {
+      return false;
+    }
+
     if (user.email !== CANONICAL_ADMIN_EMAIL) {
       return true;
     }
@@ -735,7 +744,14 @@ const buildInitialMessages = (storedMessages) =>
 const preferCloudCollection = (cloudValue) => (isNonEmptyArray(cloudValue) ? cloudValue : null);
 
 const resolveUsersState = ({ cloudValue, localDbValue, localStorageValue }) =>
-  buildInitialUsers(preferCloudCollection(cloudValue) || mergeCollections(DEMO_USERS, localStorageValue, localDbValue));
+  buildInitialUsers(
+    mergeCollections(
+      DEMO_USERS,
+      localStorageValue,
+      localDbValue,
+      preferCloudCollection(cloudValue) || []
+    )
+  );
 
 const resolveNotesState = ({ cloudValue, localDbValue, localStorageValue }) =>
   preferCloudCollection(cloudValue)
@@ -1220,11 +1236,13 @@ function App() {
         return;
       }
 
-      const normalizedValue = normalizeCollection(latestValue);
+      setCollection((previousValue) => {
+        const mergedValue =
+          key === DB_KEYS.users ? mergeCollections(previousValue, latestValue) : latestValue;
+        const normalizedValue = normalizeCollection(mergedValue);
 
-      setCollection((previousValue) =>
-        areCollectionsEqual(previousValue, normalizedValue) ? previousValue : normalizedValue
-      );
+        return areCollectionsEqual(previousValue, normalizedValue) ? previousValue : normalizedValue;
+      });
     };
 
     const refreshCloudCollections = () => {
