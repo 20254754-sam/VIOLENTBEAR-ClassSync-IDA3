@@ -540,7 +540,11 @@ const mergeSeedNotes = (storedNotes) => {
 };
 
 const sortNewest = (items) =>
-  [...items].sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+  [...items].sort(
+    (a, b) =>
+      new Date(b.approvedAt || b.updatedAt || b.createdAt) -
+      new Date(a.approvedAt || a.updatedAt || a.createdAt)
+  );
 
 const normalizeForumPosts = (posts) =>
   (posts || []).map((post) => {
@@ -566,6 +570,7 @@ const normalizeForumPosts = (posts) =>
 const normalizeNotes = (notes) =>
   (notes || []).map((note) => ({
     ...note,
+    approvedAt: note.approvedAt || (note.status === 'approved' ? note.updatedAt || note.createdAt : null),
     roomId: note.roomId || null,
     visibility: note.visibility || (note.roomId ? 'room' : 'public'),
     attachments: (note.attachments || []).map((attachment) => ({
@@ -800,6 +805,15 @@ function App() {
     rooms: false,
     users: false
   });
+  const latestCollectionsRef = useRef({
+    forumPosts,
+    messages,
+    notes,
+    notifications,
+    reports,
+    rooms,
+    users
+  });
   const [modalState, setModalState] = useState({
     isOpen: false,
     variant: 'default',
@@ -975,7 +989,7 @@ function App() {
           }
 
           if (!isNonEmptyArray(snapshot.cloudValue)) {
-            return isNonEmptyArray(snapshot.localValue);
+            return isNonEmptyArray(snapshot.localValue) || isNonEmptyArray(nextValue);
           }
 
           return !areCollectionsEqual(snapshot.cloudValue, nextValue);
@@ -1177,6 +1191,72 @@ function App() {
 
     return () => {
       unsubscribeHandlers.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [isHydrating]);
+
+  useEffect(() => {
+    latestCollectionsRef.current = {
+      forumPosts,
+      messages,
+      notes,
+      notifications,
+      reports,
+      rooms,
+      users
+    };
+  }, [forumPosts, messages, notes, notifications, reports, rooms, users]);
+
+  useEffect(() => {
+    if (isHydrating || !isCloudSyncEnabled) {
+      return undefined;
+    }
+
+    let isActive = true;
+
+    const refreshCollection = async (key, fallbackValue, setCollection, normalizeCollection) => {
+      const latestValue = await readDbValue(key, fallbackValue);
+
+      if (!isActive || !isNonEmptyArray(latestValue)) {
+        return;
+      }
+
+      const normalizedValue = normalizeCollection(latestValue);
+
+      setCollection((previousValue) =>
+        areCollectionsEqual(previousValue, normalizedValue) ? previousValue : normalizedValue
+      );
+    };
+
+    const refreshCloudCollections = () => {
+      const latestCollections = latestCollectionsRef.current;
+
+      Promise.all([
+        refreshCollection(DB_KEYS.users, latestCollections.users, setUsers, normalizeUserCollection),
+        refreshCollection(DB_KEYS.notes, latestCollections.notes, setNotes, normalizeNotes),
+        refreshCollection(DB_KEYS.forum, latestCollections.forumPosts, setForumPosts, normalizeForumPosts),
+        refreshCollection(DB_KEYS.messages, latestCollections.messages, setMessages, normalizeMessages),
+        refreshCollection(
+          DB_KEYS.notifications,
+          latestCollections.notifications,
+          setNotifications,
+          normalizeNotifications
+        ),
+        refreshCollection(DB_KEYS.reports, latestCollections.reports, setReports, normalizeReports),
+        refreshCollection(DB_KEYS.rooms, latestCollections.rooms, setRooms, normalizeRooms)
+      ]).catch(() => undefined);
+    };
+
+    const refreshTimer = window.setInterval(refreshCloudCollections, 12000);
+
+    window.setTimeout(refreshCloudCollections, 900);
+    window.addEventListener('focus', refreshCloudCollections);
+    window.addEventListener('online', refreshCloudCollections);
+
+    return () => {
+      isActive = false;
+      window.clearInterval(refreshTimer);
+      window.removeEventListener('focus', refreshCloudCollections);
+      window.removeEventListener('online', refreshCloudCollections);
     };
   }, [isHydrating]);
 
@@ -1964,6 +2044,7 @@ function App() {
 
   const handleApproveNote = (noteId) => {
     const approvedNote = notes.find((note) => note.id === noteId);
+    const approvedAt = new Date().toISOString();
 
     setNotes((previousNotes) =>
       previousNotes.map((note) =>
@@ -1971,9 +2052,10 @@ function App() {
           ? {
               ...note,
               status: 'approved',
+              approvedAt,
               rejectionReason: null,
               rejectionByName: null,
-              updatedAt: new Date().toISOString()
+              updatedAt: approvedAt
             }
           : note
       )

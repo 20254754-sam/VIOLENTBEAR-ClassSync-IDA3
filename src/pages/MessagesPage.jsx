@@ -1060,14 +1060,14 @@ const MessagesPage = ({
   return (
     <>
       <div className="page">
+        <div className="messages-page-header messages-intro-card">
+          <span className="messages-sidebar-eyebrow">Private chat</span>
+          <h1>Messages</h1>
+          <p className="page-description-box">Search a classmate, open a thread, and keep your direct conversations here.</p>
+        </div>
+
         <div className="messages-shell">
           <aside className="messages-sidebar">
-          <div className="messages-sidebar-header">
-            <span className="messages-sidebar-eyebrow">Private chat</span>
-            <h1>Messages</h1>
-            <p>Search a classmate, open a thread, and keep your direct conversations here.</p>
-          </div>
-
           <input
             className="messages-search-input"
             value={query}

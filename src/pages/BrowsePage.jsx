@@ -145,7 +145,6 @@ const BrowsePage = ({ notes, users, currentUser, onToggleLike, onDelete, onEdit 
                 <div className="user-search-card-copy">
                   <strong>{user.name}</strong>
                   <p>{user.role === 'admin' ? 'Admin' : user.course || 'Student'}</p>
-                  <small>{user.profileVisibility === 'public' ? 'Public profile' : 'Private profile with public notes'}</small>
                 </div>
                 <div className="user-search-card-actions">
                   <Link

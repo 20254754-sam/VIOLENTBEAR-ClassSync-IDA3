@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import ForumVoteControls from '../components/ForumVoteControls';
 import {
   appendMention,
@@ -65,6 +65,7 @@ const RoomDetailsPage = ({
   getRoomLink
 }) => {
   const { roomId } = useParams();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const [feedback, setFeedback] = useState('');
   const [postForm, setPostForm] = useState({
@@ -223,11 +224,20 @@ const RoomDetailsPage = ({
 
   const renderRoomComment = (post, comment, commentsByParent, depth = 0) => {
     const replies = commentsByParent.get(comment.id) || [];
+    const commenterPath = comment.userId === currentUser.id ? '/profile' : `/users/${comment.userId}`;
+    const returnRoute = `${location.pathname}${location.search}`;
 
     return (
       <div key={comment.id} className={`forum-comment ${depth > 0 ? 'forum-comment-reply' : ''}`}>
         <div className="forum-comment-header">
-          <strong>{comment.userName}</strong>
+          <Link
+            to={commenterPath}
+            state={{ from: returnRoute }}
+            className="forum-comment-author-link"
+            onClick={() => sessionStorage.setItem('classsync-profile-return-route', returnRoute)}
+          >
+            {comment.userName}
+          </Link>
           <button
             type="button"
             className="forum-reply-button"

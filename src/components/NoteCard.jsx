@@ -8,12 +8,12 @@ const formatDate = (dateValue) =>
     year: 'numeric'
   });
 
-const NoteCardActionIcon = ({ type }) => {
+const NoteCardActionIcon = ({ type, active = false }) => {
   const paths = {
     like: (
       <path
         d="M12 20.2 5.4 13.9a4.1 4.1 0 0 1-.25-5.75 3.7 3.7 0 0 1 5.45.08L12 9.7l1.4-1.47a3.7 3.7 0 0 1 5.45-.08 4.1 4.1 0 0 1-.25 5.75z"
-        fill="none"
+        fill={active ? 'currentColor' : 'none'}
         stroke="currentColor"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -77,6 +77,7 @@ const NoteCard = ({ note, currentUser, onToggleLike, onDelete, onEdit, showStatu
   };
 
   const handleAction = (event, callback) => {
+    event.preventDefault();
     event.stopPropagation();
     callback();
   };
@@ -110,11 +111,12 @@ const NoteCard = ({ note, currentUser, onToggleLike, onDelete, onEdit, showStatu
         <div className="note-card-action-row">
           <button
             type="button"
-            className={`card-action-button ${likedByCurrentUser ? 'card-action-button-active' : ''}`}
+            className={`card-action-button note-like-button ${likedByCurrentUser ? 'card-action-button-active note-like-button-active' : ''}`}
             onClick={(event) => handleAction(event, () => onToggleLike(note.id))}
+            aria-pressed={likedByCurrentUser}
             aria-label={`${likedByCurrentUser ? 'Unlike' : 'Like'} note, ${note.likes.length} likes`}
           >
-            <NoteCardActionIcon type="like" />
+            <NoteCardActionIcon type="like" active={likedByCurrentUser} />
             <span className="note-card-button-label">{likedByCurrentUser ? 'Unlike' : 'Like'}</span>
             <span className="note-card-button-count">{note.likes.length}</span>
           </button>

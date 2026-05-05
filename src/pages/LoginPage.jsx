@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import BrandLogo from '../components/BrandLogo';
 import { readDbValue, subscribeToDbCollection, writeDbValue } from '../lib/classsyncDb';
+import { COURSE_OPTIONS, YEAR_LEVEL_OPTIONS } from '../lib/courseOptions';
 
 const GAME_BOARD_SIZE = 8;
 const CLASSBLOCKS_DRAG_LIFT = 72;
@@ -1580,23 +1581,29 @@ const LoginPage = ({
 
                 {showAdditionalInfo && (
                   <div className="auth-extra-grid">
-                    <div className="form-group">
-                      <label htmlFor="register-course">Course</label>
-                      <input
-                        id="register-course"
-                        value={registerForm.additionalInfo.course}
-                        onChange={(event) =>
-                          setRegisterForm((current) => ({
-                            ...current,
-                            additionalInfo: { ...current.additionalInfo, course: event.target.value }
-                          }))
-                        }
-                        placeholder="Example: BSIT"
-                      />
-                    </div>
+                      <div className="form-group">
+                        <label htmlFor="register-course">Course</label>
+                        <select
+                          id="register-course"
+                          value={registerForm.additionalInfo.course}
+                          onChange={(event) =>
+                            setRegisterForm((current) => ({
+                              ...current,
+                              additionalInfo: { ...current.additionalInfo, course: event.target.value }
+                            }))
+                          }
+                        >
+                          <option value="">Select course</option>
+                          {COURSE_OPTIONS.map((course) => (
+                            <option key={course.value} value={course.value}>
+                              {course.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     <div className="form-group">
                       <label htmlFor="register-year-level">Year level</label>
-                      <input
+                      <select
                         id="register-year-level"
                         value={registerForm.additionalInfo.yearLevel}
                         onChange={(event) =>
@@ -1605,8 +1612,14 @@ const LoginPage = ({
                             additionalInfo: { ...current.additionalInfo, yearLevel: event.target.value }
                           }))
                         }
-                        placeholder="Example: 2nd Year"
-                      />
+                      >
+                        <option value="">Select year level</option>
+                        {YEAR_LEVEL_OPTIONS.map((yearLevel) => (
+                          <option key={yearLevel} value={yearLevel}>
+                            {yearLevel}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     <div className="form-group">
                       <label htmlFor="register-bio">Short bio</label>

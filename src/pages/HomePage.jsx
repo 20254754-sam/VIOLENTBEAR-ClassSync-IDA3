@@ -4,7 +4,14 @@ import BrandLogo from '../components/BrandLogo';
 import NoteList from '../components/NoteList';
 
 const HomePage = ({ notes, currentUser, onToggleLike, onDelete, onEdit }) => {
-  const recentNotes = notes.slice(0, 3);
+  const recentNotes = [...notes]
+    .filter((note) => note.status === 'approved' && !note.roomId)
+    .sort(
+      (firstNote, secondNote) =>
+        new Date(secondNote.approvedAt || secondNote.updatedAt || secondNote.createdAt) -
+        new Date(firstNote.approvedAt || firstNote.updatedAt || firstNote.createdAt)
+    )
+    .slice(0, 3);
 
   return (
     <div className="page home-page">

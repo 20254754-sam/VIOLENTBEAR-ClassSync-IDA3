@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import ForumVoteControls from '../components/ForumVoteControls';
 import {
   appendMention,
@@ -35,6 +36,7 @@ const MentionText = ({ text }) =>
   );
 
 const ForumPage = ({ currentUser, users = [], posts, onCreatePost, onVote, onComment, onReport, onDeletePost }) => {
+  const location = useLocation();
   const [postForm, setPostForm] = useState({
     title: '',
     body: '',
@@ -89,11 +91,20 @@ const ForumPage = ({ currentUser, users = [], posts, onCreatePost, onVote, onCom
 
   const renderComment = (post, comment, commentsByParent, depth = 0) => {
     const replies = commentsByParent.get(comment.id) || [];
+    const commenterPath = comment.userId === currentUser.id ? '/profile' : `/users/${comment.userId}`;
+    const returnRoute = `${location.pathname}${location.search}`;
 
     return (
       <div key={comment.id} className={`forum-comment ${depth > 0 ? 'forum-comment-reply' : ''}`}>
         <div className="forum-comment-header">
-          <strong>{comment.userName}</strong>
+          <Link
+            to={commenterPath}
+            state={{ from: returnRoute }}
+            className="forum-comment-author-link"
+            onClick={() => sessionStorage.setItem('classsync-profile-return-route', returnRoute)}
+          >
+            {comment.userName}
+          </Link>
           <button
             type="button"
             className="forum-reply-button"

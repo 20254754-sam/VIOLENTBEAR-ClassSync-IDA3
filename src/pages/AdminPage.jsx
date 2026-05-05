@@ -32,6 +32,7 @@ const AdminPage = ({
   const approvedCount = allNotes.filter((note) => note.status === 'approved').length;
   const rejectedCount = allNotes.filter((note) => note.status === 'rejected').length;
   const openReports = reports.filter((report) => report.status === 'open');
+  const [activeQueue, setActiveQueue] = useState('pending');
   const [announcementForm, setAnnouncementForm] = useState({
     audience: 'all',
     targetUserId: '',
@@ -68,28 +69,33 @@ const AdminPage = ({
   };
 
   return (
-    <div className="page">
+    <div className="page admin-page">
       <section className="admin-dashboard-hero">
         <div className="admin-dashboard-copy">
+          <span className="dashboard-strip-label">Admin console</span>
           <h1>Admin Review Queue</h1>
           <p>Review submissions, handle reports, and send announcements from one place.</p>
+        </div>
+        <div className="admin-dashboard-status">
+          <strong>{pendingNotes.length + openReports.length}</strong>
+          <span>Needs action</span>
         </div>
       </section>
 
       <div className="profile-stat-grid admin-stat-grid">
-        <div className="summary-card">
+        <div className="summary-card admin-stat-card admin-stat-card-warning">
           <h3>Pending</h3>
           <p>{pendingNotes.length}</p>
         </div>
-        <div className="summary-card">
+        <div className="summary-card admin-stat-card admin-stat-card-success">
           <h3>Approved</h3>
           <p>{approvedCount}</p>
         </div>
-        <div className="summary-card">
+        <div className="summary-card admin-stat-card admin-stat-card-muted">
           <h3>Rejected</h3>
           <p>{rejectedCount}</p>
         </div>
-        <div className="summary-card">
+        <div className="summary-card admin-stat-card admin-stat-card-danger">
           <h3>Open reports</h3>
           <p>{openReports.length}</p>
         </div>
@@ -97,8 +103,11 @@ const AdminPage = ({
 
       <section className="admin-section-block">
         <div className="admin-section-heading">
-          <h2>Announcements</h2>
-          <div className="upload-subtitle">
+          <div>
+            <span className="dashboard-strip-label">Broadcast center</span>
+            <h2>Announcements</h2>
+          </div>
+          <div className="admin-section-note">
             <p>Broadcast updates or send a direct admin notice to one user.</p>
             <p>Announcements appear in the user inbox right away.</p>
           </div>
@@ -152,120 +161,141 @@ const AdminPage = ({
 
       <section className="admin-section-block">
         <div className="admin-section-heading">
-          <h2>Pending uploads</h2>
-          <div className="upload-subtitle">
-            <p>All student submissions appear here first.</p>
-            <p>Approve a note to publish it, or reject it so the uploader can revise it.</p>
+          <div>
+            <span className="dashboard-strip-label">Review desk</span>
+            <h2>Moderation queue</h2>
           </div>
+          <div className="admin-section-note">
+            <p>Switch between student uploads and user reports.</p>
+            <p>Open only the queue you need, review it, then move on without the page feeling crowded.</p>
+          </div>
+          <span className="admin-section-count">
+            {activeQueue === 'pending' ? `${pendingNotes.length} waiting` : `${openReports.length} open`}
+          </span>
         </div>
 
-        {pendingNotes.length > 0 ? (
-          <div className="admin-review-list">
-            {pendingNotes.map((note) => (
-              <article key={note.id} className="admin-review-card admin-review-card-compact">
-                <div className="admin-review-header">
-                  <div>
-                    <h3>{note.title}</h3>
-                    <p>
-                      {note.subject} - submitted by {note.uploaderName} on {formatDate(note.updatedAt || note.createdAt)}
-                    </p>
-                  </div>
-                  <span className="status-pill status-pending">pending</span>
-                </div>
-
-                <p className="admin-review-content admin-review-content-preview">{getPreviewText(note.content)}</p>
-
-                <div className="admin-review-meta-grid">
-                  <div className="admin-review-meta-chip">
-                    <strong>Attachments</strong>
-                    <span>{note.attachments?.length || 0}</span>
-                  </div>
-                  <div className="admin-review-meta-chip">
-                    <strong>Reference</strong>
-                    <span>{note.source ? note.source.type : 'Original work'}</span>
-                  </div>
-                </div>
-
-                <div className="admin-review-tips">
-                  <span>Admin checklist</span>
-                  <p>Check clarity, completeness, and whether the reference details are filled in when needed.</p>
-                </div>
-
-                <div className="admin-review-actions admin-review-actions-sticky">
-                  <Link to={`/note/${note.id}`} state={{ from: '/admin' }} className="card-link-button">
-                    View full note
-                  </Link>
-                  <button type="button" className="secondary-button" onClick={() => onApprove(note.id)}>
-                    Approve
-                  </button>
-                  <button type="button" className="card-link-button card-link-button-danger" onClick={() => onReject(note.id)}>
-                    Reject
-                  </button>
-                  <button type="button" className="card-link-button card-link-button-danger" onClick={() => onDelete(note.id)}>
-                    Delete
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="profile-empty-state">
-            <h3>No pending uploads</h3>
-            <p>No notes are waiting for review right now.</p>
-          </div>
-        )}
-      </section>
-
-      <section className="admin-section-block">
-        <div className="admin-section-heading">
-          <h2>Reports</h2>
-          <div className="upload-subtitle">
-            <p>User reports land here for admin review.</p>
-            <p>Reports can point to notes or forum posts that may need attention.</p>
-          </div>
+        <div className="admin-queue-toggle" role="tablist" aria-label="Admin review queues">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeQueue === 'pending'}
+            className={`admin-queue-tab ${activeQueue === 'pending' ? 'admin-queue-tab-active' : ''}`}
+            onClick={() => setActiveQueue('pending')}
+          >
+            <span>Pending uploads</span>
+            <strong>{pendingNotes.length}</strong>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeQueue === 'reports'}
+            className={`admin-queue-tab ${activeQueue === 'reports' ? 'admin-queue-tab-active' : ''}`}
+            onClick={() => setActiveQueue('reports')}
+          >
+            <span>Reports</span>
+            <strong>{openReports.length}</strong>
+          </button>
         </div>
 
-        {openReports.length > 0 ? (
-          <div className="admin-report-list">
-            {openReports.map((report) => (
-              <article key={report.id} className="admin-report-card">
-                <div className="admin-review-header">
-                  <div>
-                    <h3>{report.targetTitle}</h3>
-                    <p>
-                      Reported by {report.reporterName} on {formatDate(report.createdAt)}
-                    </p>
+        <div className="admin-queue-panel">
+          {activeQueue === 'pending' ? (
+            pendingNotes.length > 0 ? (
+              <div className="admin-review-list">
+                {pendingNotes.map((note) => (
+                  <article key={note.id} className="admin-review-card admin-review-card-compact">
+                    <div className="admin-review-header">
+                      <div>
+                        <h3>{note.title}</h3>
+                        <p>
+                          {note.subject} - submitted by {note.uploaderName} on {formatDate(note.updatedAt || note.createdAt)}
+                        </p>
+                      </div>
+                      <span className="status-pill status-pending">pending</span>
+                    </div>
+
+                    <p className="admin-review-content admin-review-content-preview">{getPreviewText(note.content)}</p>
+
+                    <div className="admin-review-meta-grid">
+                      <div className="admin-review-meta-chip">
+                        <strong>Attachments</strong>
+                        <span>{note.attachments?.length || 0}</span>
+                      </div>
+                      <div className="admin-review-meta-chip">
+                        <strong>Reference</strong>
+                        <span>{note.source ? note.source.type : 'Original work'}</span>
+                      </div>
+                    </div>
+
+                    <div className="admin-review-tips">
+                      <span>Admin checklist</span>
+                      <p>Check clarity, completeness, and whether the reference details are filled in when needed.</p>
+                    </div>
+
+                    <div className="admin-review-actions admin-review-actions-sticky">
+                      <Link to={`/note/${note.id}`} state={{ from: '/admin' }} className="card-link-button">
+                        View full note
+                      </Link>
+                      <button type="button" className="secondary-button" onClick={() => onApprove(note.id)}>
+                        Approve
+                      </button>
+                      <button type="button" className="card-link-button card-link-button-danger" onClick={() => onReject(note.id)}>
+                        Reject
+                      </button>
+                      <button type="button" className="card-link-button card-link-button-danger" onClick={() => onDelete(note.id)}>
+                        Delete
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="profile-empty-state">
+                <h3>No pending uploads</h3>
+                <p>No notes are waiting for review right now.</p>
+              </div>
+            )
+          ) : openReports.length > 0 ? (
+            <div className="admin-report-list">
+              {openReports.map((report) => (
+                <article key={report.id} className="admin-report-card">
+                  <div className="admin-review-header">
+                    <div>
+                      <h3>{report.targetTitle}</h3>
+                      <p>
+                        Reported by {report.reporterName} on {formatDate(report.createdAt)}
+                      </p>
+                    </div>
+                    <span className="status-pill status-rejected">{report.targetType === 'note' ? 'note report' : 'forum report'}</span>
                   </div>
-                  <span className="status-pill status-rejected">{report.targetType === 'note' ? 'note report' : 'forum report'}</span>
-                </div>
-                <p className="admin-report-reason">{report.reason}</p>
-                <div className="admin-review-actions">
-                  {report.targetType === 'note' ? (
-                    <Link
-                      to={report.roomId ? `/rooms/${report.roomId}/note/${report.targetId}` : `/note/${report.targetId}`}
-                      state={{ from: '/admin' }}
-                      className="card-link-button"
-                    >
-                      Open reported note
-                    </Link>
-                  ) : (
-                    <Link to={report.roomId ? `/rooms/${report.roomId}` : '/forum'} className="card-link-button">
-                      Open forum thread
-                    </Link>
-                  )}
-                  <button type="button" className="secondary-button" onClick={() => onResolveReport(report.id)}>
-                    Mark resolved
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="profile-empty-state">
-            <h3>No open reports</h3>
-            <p>Nothing is waiting for admin action here right now.</p>
-          </div>
-        )}
+                  <p className="admin-report-reason">{report.reason}</p>
+                  <div className="admin-review-actions">
+                    {report.targetType === 'note' ? (
+                      <Link
+                        to={report.roomId ? `/rooms/${report.roomId}/note/${report.targetId}` : `/note/${report.targetId}`}
+                        state={{ from: '/admin' }}
+                        className="card-link-button"
+                      >
+                        Open reported note
+                      </Link>
+                    ) : (
+                      <Link to={report.roomId ? `/rooms/${report.roomId}` : '/forum'} className="card-link-button">
+                        Open forum thread
+                      </Link>
+                    )}
+                    <button type="button" className="secondary-button" onClick={() => onResolveReport(report.id)}>
+                      Mark resolved
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="profile-empty-state">
+              <h3>No open reports</h3>
+              <p>Nothing is waiting for admin action here right now.</p>
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );

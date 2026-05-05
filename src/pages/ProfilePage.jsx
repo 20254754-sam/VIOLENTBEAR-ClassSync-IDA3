@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import NoteList from '../components/NoteList';
 import UserAvatar from '../components/UserAvatar';
+import { COURSE_OPTIONS, YEAR_LEVEL_OPTIONS, hasCourseOption, hasYearLevelOption } from '../lib/courseOptions';
 
 const MAX_PROFILE_IMAGE_SIZE = 8 * 1024 * 1024;
 const PROFILE_IMAGE_SIZE = 512;
@@ -152,7 +153,10 @@ const ProfilePage = ({
 
   const handleProfileSubmit = (event) => {
     event.preventDefault();
-    const result = onUpdateProfile(profileForm);
+    const result = onUpdateProfile({
+      ...profileForm,
+      course: !isAdmin && profileForm.course === 'Administrator' ? '' : profileForm.course
+    });
     setProfileFeedback(result.message);
   };
 
@@ -201,6 +205,11 @@ const ProfilePage = ({
       </div>
     );
   }
+
+  const isKnownCourse = hasCourseOption(profileForm.course);
+  const isAdminCourseValue = profileForm.course === 'Administrator';
+  const shouldShowLegacyCourse = profileForm.course && !isKnownCourse && (!isAdminCourseValue || isAdmin);
+  const courseSelectValue = isKnownCourse || shouldShowLegacyCourse ? profileForm.course : '';
 
   return (
     <div className={`page profile-page ${isOwnProfile ? 'profile-page-own' : 'profile-page-public'}`}>
@@ -296,6 +305,9 @@ const ProfilePage = ({
         <div className="profile-management-grid">
           <section className="profile-edit-panel">
             <h2>Edit profile</h2>
+            <p className="profile-update-note">
+              If your account was created before the dropdowns, please update your course and year level here so your profile uses the official options.
+            </p>
             <form onSubmit={handleProfileSubmit} className="profile-form-grid">
               <div className="profile-picture-editor">
                 <UserAvatar user={{ ...profileUser, profilePicture: profileImagePreview }} size="lg" />
@@ -315,21 +327,42 @@ const ProfilePage = ({
                   onChange={(event) => setProfileForm((current) => ({ ...current, name: event.target.value }))}
                 />
               </div>
-              <div className="form-group">
-                <label htmlFor="profile-course">Course</label>
-                <input
-                  id="profile-course"
-                  value={profileForm.course}
-                  onChange={(event) => setProfileForm((current) => ({ ...current, course: event.target.value }))}
-                />
-              </div>
+                <div className="form-group">
+                  <label htmlFor="profile-course">Course</label>
+                  <select
+                    id="profile-course"
+                    value={courseSelectValue}
+                    onChange={(event) => setProfileForm((current) => ({ ...current, course: event.target.value }))}
+                  >
+                    <option value="">Select course</option>
+                    {isAdmin && <option value="Administrator">Administrator</option>}
+                    {shouldShowLegacyCourse && (
+                      <option value={profileForm.course}>{profileForm.course}</option>
+                    )}
+                    {COURSE_OPTIONS.map((course) => (
+                      <option key={course.value} value={course.value}>
+                        {course.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               <div className="form-group">
                 <label htmlFor="profile-year">Year level</label>
-                <input
+                <select
                   id="profile-year"
                   value={profileForm.yearLevel}
                   onChange={(event) => setProfileForm((current) => ({ ...current, yearLevel: event.target.value }))}
-                />
+                >
+                  <option value="">Select year level</option>
+                  {profileForm.yearLevel && !hasYearLevelOption(profileForm.yearLevel) && (
+                    <option value={profileForm.yearLevel}>{profileForm.yearLevel}</option>
+                  )}
+                  {YEAR_LEVEL_OPTIONS.map((yearLevel) => (
+                    <option key={yearLevel} value={yearLevel}>
+                      {yearLevel}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="form-group">
                 <label htmlFor="profile-visibility">Profile visibility</label>
