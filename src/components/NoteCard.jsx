@@ -62,7 +62,16 @@ const NoteCard = ({ note, currentUser, onToggleLike, onDelete, onEdit, showStatu
   const backRoute = `${location.pathname}${location.search}`;
 
   const openDetails = () => {
-    const returnRoute = backRoute || '/';
+    const profileReturnRoute = sessionStorage.getItem('classsync-profile-return-route');
+    const isPublicProfileRoute = location.pathname.startsWith('/users/');
+    const isCircularProfileReturn = profileReturnRoute === nextDetailPath;
+    const returnRoute =
+      isPublicProfileRoute && profileReturnRoute && !isCircularProfileReturn
+        ? profileReturnRoute
+        : isPublicProfileRoute
+          ? '/browse'
+          : backRoute || '/';
+
     sessionStorage.setItem('classsync-note-return-route', returnRoute);
     navigate(nextDetailPath, { state: { from: returnRoute } });
   };

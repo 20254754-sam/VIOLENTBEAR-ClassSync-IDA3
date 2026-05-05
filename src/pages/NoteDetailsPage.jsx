@@ -75,7 +75,17 @@ const NoteDetailsPage = ({ notes, users, currentUser, onToggleLike, onDelete, on
   const liked = note && currentUser ? note.likes.includes(currentUser.id) : false;
   const uploader = users.find((user) => user.id === note?.uploaderId) || null;
   const storedBackRoute = sessionStorage.getItem('classsync-note-return-route');
-  const backTo = location.state?.from || storedBackRoute || '/browse';
+  const profileReturnRoute = sessionStorage.getItem('classsync-profile-return-route');
+  const requestedBackRoute = location.state?.from || storedBackRoute || '/browse';
+  const currentRoute = `${location.pathname}${location.search}`;
+  const backTo =
+    requestedBackRoute === currentRoute
+      ? '/browse'
+      : requestedBackRoute.startsWith('/users/')
+        ? profileReturnRoute && profileReturnRoute !== currentRoute
+          ? profileReturnRoute
+          : '/browse'
+        : requestedBackRoute;
 
   const averageRating = useMemo(() => {
     if (!note || note.reviews.length === 0) {
@@ -151,7 +161,14 @@ const NoteDetailsPage = ({ notes, users, currentUser, onToggleLike, onDelete, on
             </span>
           </div>
           {uploader && (
-            <Link to={uploader.id === currentUser.id ? '/profile' : `/users/${uploader.id}`} className="note-uploader-link">
+            <Link
+              to={uploader.id === currentUser.id ? '/profile' : `/users/${uploader.id}`}
+              state={{ from: `${location.pathname}${location.search}` }}
+              className="note-uploader-link"
+              onClick={() =>
+                sessionStorage.setItem('classsync-profile-return-route', `${location.pathname}${location.search}`)
+              }
+            >
               <UserAvatar user={uploader} size="sm" />
               <span>Open {uploader.name}&apos;s profile</span>
             </Link>

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import AttachmentGallery from '../components/AttachmentGallery';
 import UserAvatar from '../components/UserAvatar';
 
@@ -74,6 +74,7 @@ const RoomNoteDetailsPage = ({
   onReport
 }) => {
   const { roomId, id } = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const note = notes.find((item) => item.id === Number(id) && item.roomId === roomId);
   const room = rooms.find((item) => item.id === roomId);
@@ -171,7 +172,14 @@ const RoomNoteDetailsPage = ({
             </span>
           </div>
           {uploader && (
-            <Link to={uploader.id === currentUser.id ? '/profile' : `/users/${uploader.id}`} className="note-uploader-link">
+            <Link
+              to={uploader.id === currentUser.id ? '/profile' : `/users/${uploader.id}`}
+              state={{ from: `${location.pathname}${location.search}` }}
+              className="note-uploader-link"
+              onClick={() =>
+                sessionStorage.setItem('classsync-profile-return-route', `${location.pathname}${location.search}`)
+              }
+            >
               <UserAvatar user={uploader} size="sm" />
               <span>Open {uploader.name}&apos;s profile</span>
             </Link>

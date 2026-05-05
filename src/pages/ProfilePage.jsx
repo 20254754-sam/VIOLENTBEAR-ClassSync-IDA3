@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import NoteList from '../components/NoteList';
 import UserAvatar from '../components/UserAvatar';
 
@@ -60,6 +60,8 @@ const ProfilePage = ({
   onChangePassword
 }) => {
   const { userId } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const isOwnProfile = !userId || userId === currentUser.id;
   const profileUser = useMemo(
     () => users.find((user) => user.id === (userId || currentUser.id)) || currentUser,
@@ -77,6 +79,7 @@ const ProfilePage = ({
   const rejectedNotes = visibleNotes.filter((note) => note.status === 'rejected');
   const isAdmin = profileUser.role === 'admin';
   const isPrivateToViewer = !isOwnProfile && profileUser.profileVisibility === 'private';
+  const profileBackTo = location.state?.from || sessionStorage.getItem('classsync-profile-return-route') || '/browse';
   const [profileForm, setProfileForm] = useState({
     name: profileUser.name,
     bio: profileUser.bio,
@@ -172,8 +175,19 @@ const ProfilePage = ({
   }
 
   return (
-    <div className="page">
-      <h1>{isOwnProfile ? 'Your Profile' : `${profileUser.name}'s Profile`}</h1>
+    <div className={`page profile-page ${isOwnProfile ? 'profile-page-own' : 'profile-page-public'}`}>
+      <div className="profile-page-header">
+        {!isOwnProfile && (
+          <button type="button" className="back-btn profile-back-button" onClick={() => navigate(profileBackTo)} aria-label="Back">
+            <span className="profile-back-mobile-symbol" aria-hidden="true">&lt;</span>
+            <span className="profile-back-label">Back</span>
+          </button>
+        )}
+        <div>
+          <span className="dashboard-strip-label">{isOwnProfile ? 'Account center' : 'Public profile'}</span>
+          <h1>{isOwnProfile ? 'Your Profile' : `${profileUser.name}'s Profile`}</h1>
+        </div>
+      </div>
 
       <div className="profile-hero profile-hero-expanded">
         <div className="profile-hero-main">
@@ -181,7 +195,10 @@ const ProfilePage = ({
           <div>
             <h2>{profileUser.name}</h2>
             <p>{isPrivateToViewer ? 'This profile is private, but shared notes remain visible.' : profileUser.bio}</p>
-            <div className="profile-role-badge">{profileUser.role}</div>
+            <div className="profile-public-badge-row">
+              <div className="profile-role-badge">{profileUser.role}</div>
+              {!isOwnProfile && <span className="ownership-badge ownership-badge-original">{approvedNotes.length} public notes</span>}
+            </div>
             {!isOwnProfile && (
               <div className="profile-public-actions">
                 <Link to={`/messages?user=${profileUser.id}`} className="card-link-button">Message</Link>

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import SearchBar from '../components/SearchBar';
 import NoteList from '../components/NoteList';
 import UserAvatar from '../components/UserAvatar';
@@ -45,26 +45,37 @@ const UserSearchActionIcon = ({ type }) => {
 };
 
 const BrowsePage = ({ notes, users, currentUser, onToggleLike, onDelete, onEdit }) => {
+  const location = useLocation();
   const [query, setQuery] = useState('');
+  const [activeFilter, setActiveFilter] = useState('All');
+
+  const browseFilters = useMemo(() => {
+    const subjects = [...new Set(notes.map((note) => note.subject).filter(Boolean))].slice(0, 5);
+    const courses = [...new Set(users.map((user) => user.course).filter(Boolean))].slice(0, 4);
+
+    return ['All', ...subjects, ...courses.filter((course) => !subjects.includes(course))];
+  }, [notes, users]);
 
   const filteredNotes = useMemo(() => {
-    if (!query.trim()) {
-      return notes;
-    }
+    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedFilter = activeFilter === 'All' ? '' : activeFilter.toLowerCase();
 
     return notes.filter((note) =>
-      note.title.toLowerCase().includes(query.toLowerCase()) ||
-      note.subject.toLowerCase().includes(query.toLowerCase()) ||
-      note.content.toLowerCase().includes(query.toLowerCase())
+      (!normalizedFilter || note.subject.toLowerCase() === normalizedFilter) &&
+      (!normalizedQuery ||
+        note.title.toLowerCase().includes(normalizedQuery) ||
+        note.subject.toLowerCase().includes(normalizedQuery) ||
+        note.content.toLowerCase().includes(normalizedQuery))
     );
-  }, [notes, query]);
+  }, [activeFilter, notes, query]);
 
   const matchingUsers = useMemo(() => {
-    if (!query.trim()) {
+    if (!query.trim() && activeFilter === 'All') {
       return [];
     }
 
-    const normalizedQuery = query.toLowerCase();
+    const normalizedQuery = query.trim().toLowerCase();
+    const normalizedFilter = activeFilter === 'All' ? '' : activeFilter.toLowerCase();
 
     return users.filter((user) => {
       if (user.id === currentUser.id) {
@@ -72,16 +83,24 @@ const BrowsePage = ({ notes, users, currentUser, onToggleLike, onDelete, onEdit 
       }
 
       return (
-        user.name.toLowerCase().includes(normalizedQuery) ||
-        user.email.toLowerCase().includes(normalizedQuery) ||
-        user.course.toLowerCase().includes(normalizedQuery)
+        (!normalizedFilter || user.course.toLowerCase() === normalizedFilter) &&
+        (!normalizedQuery ||
+          user.name.toLowerCase().includes(normalizedQuery) ||
+          user.email.toLowerCase().includes(normalizedQuery) ||
+          user.course.toLowerCase().includes(normalizedQuery))
       );
     });
-  }, [currentUser.id, query, users]);
+  }, [activeFilter, currentUser.id, query, users]);
+
+  const resetBrowseSearch = () => {
+    setQuery('');
+    setActiveFilter('All');
+  };
 
   useEffect(() => {
     if (!notes.length) {
       setQuery('');
+      setActiveFilter('All');
     }
   }, [notes]);
 
@@ -92,7 +111,26 @@ const BrowsePage = ({ notes, users, currentUser, onToggleLike, onDelete, onEdit 
         <p>{filteredNotes.length} notes found</p>
         <p>Only notes approved by the admin are visible here.</p>
       </div>
-      <SearchBar onSearch={setQuery} />
+      <SearchBar
+        value={query}
+        onSearch={setQuery}
+        onClear={resetBrowseSearch}
+        placeholder="Search notes or users"
+        sticky
+      />
+
+      <div className="browse-filter-row" aria-label="Browse filters">
+        {browseFilters.map((filter) => (
+          <button
+            key={filter}
+            type="button"
+            className={`browse-filter-chip ${activeFilter === filter ? 'browse-filter-chip-active' : ''}`}
+            onClick={() => setActiveFilter(filter)}
+          >
+            {filter}
+          </button>
+        ))}
+      </div>
 
       {matchingUsers.length > 0 && (
         <section className="user-search-section">
@@ -110,7 +148,15 @@ const BrowsePage = ({ notes, users, currentUser, onToggleLike, onDelete, onEdit 
                   <small>{user.profileVisibility === 'public' ? 'Public profile' : 'Private profile with public notes'}</small>
                 </div>
                 <div className="user-search-card-actions">
-                  <Link to={`/users/${user.id}`} className="card-link-button user-search-action-button" aria-label={`View ${user.name}'s profile`}>
+                  <Link
+                    to={`/users/${user.id}`}
+                    state={{ from: `${location.pathname}${location.search}` }}
+                    className="card-link-button user-search-action-button"
+                    aria-label={`View ${user.name}'s profile`}
+                    onClick={() =>
+                      sessionStorage.setItem('classsync-profile-return-route', `${location.pathname}${location.search}`)
+                    }
+                  >
                     <UserSearchActionIcon type="profile" />
                     <span className="user-search-action-label">View profile</span>
                   </Link>
@@ -134,7 +180,13 @@ const BrowsePage = ({ notes, users, currentUser, onToggleLike, onDelete, onEdit 
           onEdit={onEdit}
         />
       ) : (
-        <p>No approved notes match your search right now.</p>
+        <div className="profile-empty-state browse-empty-state">
+          <h3>No notes found</h3>
+          <p>Try a different keyword, clear the filter, or browse all approved notes again.</p>
+          <button type="button" className="secondary-button" onClick={resetBrowseSearch}>
+            Clear search
+          </button>
+        </div>
       )}
     </div>
   );

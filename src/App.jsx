@@ -604,6 +604,7 @@ const normalizeMessages = (messages) =>
     roomId: message.roomId || null,
     text: message.text || '',
     voice: message.voice || null,
+    attachments: Array.isArray(message.attachments) ? message.attachments : [],
     mentions: Array.isArray(message.mentions) ? message.mentions : [],
     participants: [...new Set(message.participants || [])],
     readBy: [...new Set(message.readBy || [message.senderId].filter(Boolean))],
@@ -1927,12 +1928,13 @@ function App() {
 
     const trimmedText = text.trim();
     const voice = options.voice || null;
+    const attachments = Array.isArray(options.attachments) ? options.attachments : [];
     const targetUser = users.find((user) => user.id === targetUserId);
 
-    if ((!trimmedText && !voice) || !targetUser || targetUser.id === currentUser.id) {
+    if ((!trimmedText && !voice && attachments.length === 0) || !targetUser || targetUser.id === currentUser.id) {
       return {
         success: false,
-        message: 'Choose a valid recipient and enter a message or voice note first.'
+        message: 'Choose a valid recipient and enter a message, file, image, or voice note first.'
       };
     }
 
@@ -1949,6 +1951,7 @@ function App() {
       senderName: currentUser.name,
       text: trimmedText,
       voice,
+      attachments,
       createdAt: now,
       updatedAt: now,
       readBy: [currentUser.id],
@@ -1956,10 +1959,21 @@ function App() {
     };
 
     setMessages((previousMessages) => [nextMessage, ...previousMessages]);
+
+    const attachmentPreview =
+      attachments.length > 0
+        ? `Sent ${attachments.length} attachment${attachments.length === 1 ? '' : 's'}`
+        : '';
+    const notificationPreview = voice
+      ? 'Sent a voice note'
+      : trimmedText
+        ? trimmedText.slice(0, 90)
+        : attachmentPreview;
+
     createNotification({
       targetUserId: targetUser.id,
       title: 'New direct message',
-      message: `${currentUser.name}: ${voice ? 'Sent a voice note' : trimmedText.slice(0, 90)}`,
+      message: `${currentUser.name}: ${notificationPreview}`,
       type: 'direct-message',
       link: `/messages?user=${currentUser.id}`
     });
