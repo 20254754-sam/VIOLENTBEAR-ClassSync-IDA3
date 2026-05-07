@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 const formatDate = (dateValue) =>
@@ -18,16 +18,52 @@ const getPreviewText = (value, limit = 240) => {
   return `${trimmedValue.slice(0, limit).trimEnd()}...`;
 };
 
+const EditIcon = () => (
+  <svg aria-hidden="true" viewBox="0 0 24 24">
+    <path
+      d="M4 20h4.4L19.1 9.3a2.1 2.1 0 0 0 0-3L17.7 4.9a2.1 2.1 0 0 0-3 0L4 15.6V20Z"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    />
+    <path
+      d="m13.6 6 4.4 4.4"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeWidth="2"
+    />
+  </svg>
+);
+
+const DeleteIcon = () => (
+  <svg aria-hidden="true" viewBox="0 0 24 24">
+    <path
+      d="M5 7h14M10 11v6M14 11v6M8 7l.6 12.1A2 2 0 0 0 10.6 21h2.8a2 2 0 0 0 2-1.9L16 7M9 7l1-3h4l1 3"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    />
+  </svg>
+);
+
 const AdminPage = ({
   pendingNotes,
   allNotes,
   reports,
   users,
+  announcements = [],
   onApprove,
   onReject,
   onDelete,
   onResolveReport,
-  onCreateAnnouncement
+  onCreateAnnouncement,
+  onUpdateAnnouncement,
+  onDeleteAnnouncement
 }) => {
   const approvedCount = allNotes.filter((note) => note.status === 'approved').length;
   const rejectedCount = allNotes.filter((note) => note.status === 'rejected').length;
@@ -39,13 +75,39 @@ const AdminPage = ({
     title: '',
     message: ''
   });
+  const [announcementUserQuery, setAnnouncementUserQuery] = useState('');
+  const [isAnnouncementUserSearchOpen, setIsAnnouncementUserSearchOpen] = useState(false);
   const [announcementFeedback, setAnnouncementFeedback] = useState('');
+  const [editingAnnouncement, setEditingAnnouncement] = useState(null);
+  const [announcementEditForm, setAnnouncementEditForm] = useState({
+    title: '',
+    message: ''
+  });
+  const [announcementEditFeedback, setAnnouncementEditFeedback] = useState('');
+  const [isAnnouncementHistoryOpen, setIsAnnouncementHistoryOpen] = useState(false);
+  const selectedAnnouncementUser = users.find((user) => user.id === announcementForm.targetUserId);
+  const announcementUserResults = useMemo(() => {
+    const normalizedQuery = announcementUserQuery.trim().toLowerCase();
+
+    if (!normalizedQuery) {
+      return users.slice(0, 6);
+    }
+
+    return users
+      .filter((user) => user.email.toLowerCase().includes(normalizedQuery))
+      .slice(0, 6);
+  }, [announcementUserQuery, users]);
 
   const handleAnnouncementSubmit = (event) => {
     event.preventDefault();
 
     if (!announcementForm.title.trim() || !announcementForm.message.trim()) {
       setAnnouncementFeedback('Please complete the announcement title and message.');
+      return;
+    }
+
+    if (announcementForm.audience === 'one' && !announcementForm.targetUserId) {
+      setAnnouncementFeedback('Search and choose a matching user email first.');
       return;
     }
 
@@ -65,7 +127,81 @@ const AdminPage = ({
         title: '',
         message: ''
       });
+      setAnnouncementUserQuery('');
+      setIsAnnouncementUserSearchOpen(false);
     }
+  };
+
+  const handleAnnouncementUserSearchChange = (value) => {
+    const matchingUser = users.find((user) => user.email.toLowerCase() === value.trim().toLowerCase());
+
+    setAnnouncementUserQuery(value);
+    setIsAnnouncementUserSearchOpen(true);
+    setAnnouncementForm((currentForm) => ({
+      ...currentForm,
+      targetUserId: matchingUser?.id || ''
+    }));
+  };
+
+  const selectAnnouncementUser = (user) => {
+    setAnnouncementUserQuery(user.email);
+    setIsAnnouncementUserSearchOpen(false);
+    setAnnouncementForm((currentForm) => ({
+      ...currentForm,
+      targetUserId: user.id
+    }));
+  };
+
+  const startEditingAnnouncement = (announcement) => {
+    setIsAnnouncementHistoryOpen(true);
+    setEditingAnnouncement(announcement);
+    setAnnouncementEditForm({
+      title: announcement.title || '',
+      message: announcement.message || ''
+    });
+    setAnnouncementEditFeedback('');
+  };
+
+  const cancelEditingAnnouncement = () => {
+    setEditingAnnouncement(null);
+    setAnnouncementEditForm({
+      title: '',
+      message: ''
+    });
+    setAnnouncementEditFeedback('');
+  };
+
+  const handleAnnouncementEditSubmit = (event) => {
+    event.preventDefault();
+
+    if (!editingAnnouncement) {
+      return;
+    }
+
+    const result = onUpdateAnnouncement({
+      announcementId: editingAnnouncement.announcementId,
+      notificationIds: editingAnnouncement.notificationIds,
+      title: announcementEditForm.title,
+      message: announcementEditForm.message
+    });
+
+    setAnnouncementEditFeedback(result.message);
+
+    if (result.success) {
+      setEditingAnnouncement(null);
+      setAnnouncementEditForm({
+        title: '',
+        message: ''
+      });
+    }
+  };
+
+  const handleDeleteAnnouncement = (announcement) => {
+    if (editingAnnouncement?.id === announcement.id) {
+      cancelEditingAnnouncement();
+    }
+
+    onDeleteAnnouncement(announcement);
   };
 
   return (
@@ -113,40 +249,66 @@ const AdminPage = ({
           </div>
         </div>
         <form className="forum-form admin-announcement-form" onSubmit={handleAnnouncementSubmit}>
-          <div className="forum-form-grid">
-            <select
-              value={announcementForm.audience}
-              onChange={(event) =>
-                setAnnouncementForm((currentForm) => ({
-                  ...currentForm,
-                  audience: event.target.value,
-                  targetUserId: event.target.value === 'all' ? '' : currentForm.targetUserId
-                }))
-              }
-            >
-              <option value="all">Send to all users</option>
-              <option value="one">Send to one user</option>
-            </select>
-            {announcementForm.audience === 'one' && (
-              <select
-                value={announcementForm.targetUserId}
-                onChange={(event) =>
-                  setAnnouncementForm((currentForm) => ({ ...currentForm, targetUserId: event.target.value }))
-                }
-              >
-                <option value="">Choose a user</option>
-                {users.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.name} ({user.email})
-                  </option>
-                ))}
-              </select>
-            )}
+          <div className="forum-form-grid admin-announcement-grid">
             <input
               value={announcementForm.title}
               onChange={(event) => setAnnouncementForm((currentForm) => ({ ...currentForm, title: event.target.value }))}
               placeholder="Announcement title"
             />
+            <select
+              value={announcementForm.audience}
+              onChange={(event) => {
+                const nextAudience = event.target.value;
+
+                if (nextAudience === 'all') {
+                  setAnnouncementUserQuery('');
+                  setIsAnnouncementUserSearchOpen(false);
+                }
+
+                setAnnouncementForm((currentForm) => ({
+                  ...currentForm,
+                  audience: nextAudience,
+                  targetUserId: nextAudience === 'all' ? '' : currentForm.targetUserId
+                }));
+              }}
+            >
+              <option value="all">Send to all users</option>
+              <option value="one">Send to one user</option>
+            </select>
+            {announcementForm.audience === 'one' && (
+              <div className="admin-announcement-recipient">
+                <input
+                  value={announcementUserQuery}
+                  onChange={(event) => handleAnnouncementUserSearchChange(event.target.value)}
+                  onFocus={() => setIsAnnouncementUserSearchOpen(true)}
+                  onBlur={() => window.setTimeout(() => setIsAnnouncementUserSearchOpen(false), 120)}
+                  placeholder="Search user email"
+                  aria-label="Search user email"
+                  autoComplete="off"
+                />
+                {isAnnouncementUserSearchOpen && (
+                  <div className="admin-announcement-user-results">
+                    {announcementUserResults.length > 0 ? (
+                      announcementUserResults.map((user) => (
+                        <button
+                          type="button"
+                          key={user.id}
+                          className={`admin-announcement-user-option ${
+                            selectedAnnouncementUser?.id === user.id ? 'admin-announcement-user-option-active' : ''
+                          }`}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => selectAnnouncementUser(user)}
+                        >
+                          {user.email}
+                        </button>
+                      ))
+                    ) : (
+                      <p>No matching email found.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <textarea
             rows="4"
@@ -157,6 +319,103 @@ const AdminPage = ({
           <button type="submit">Send announcement</button>
           {announcementFeedback && <p className="rooms-feedback">{announcementFeedback}</p>}
         </form>
+
+        <div className="admin-announcement-history">
+          <div className="admin-announcement-history-header">
+            <div>
+              <span className="dashboard-strip-label">Sent updates</span>
+              <h3>Announcement history</h3>
+            </div>
+            <div className="admin-announcement-history-actions">
+              <span>{announcements.length} sent</span>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setIsAnnouncementHistoryOpen((isOpen) => !isOpen)}
+              >
+                {isAnnouncementHistoryOpen ? 'Hide history' : 'View history'}
+              </button>
+            </div>
+          </div>
+
+          {isAnnouncementHistoryOpen && announcements.length > 0 ? (
+            <div className="admin-announcement-list">
+              {announcements.map((announcement) => (
+                <article className="admin-announcement-card" key={announcement.id}>
+                  <div className="admin-announcement-card-copy">
+                    <strong>{announcement.title}</strong>
+                    <p>{getPreviewText(announcement.message, 160)}</p>
+                    <small>
+                      {formatDate(announcement.createdAt)} - {announcement.recipientCount} recipient(s)
+                      {announcement.editedAt ? ' - edited' : ''}
+                    </small>
+                  </div>
+                  <div className="admin-announcement-actions">
+                    <button
+                      type="button"
+                      className="admin-announcement-icon-button"
+                      aria-label={`Edit announcement: ${announcement.title}`}
+                      title="Edit announcement"
+                      onClick={() => startEditingAnnouncement(announcement)}
+                    >
+                      <EditIcon />
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-announcement-icon-button admin-announcement-icon-button-danger"
+                      aria-label={`Delete announcement: ${announcement.title}`}
+                      title="Delete announcement"
+                      onClick={() => handleDeleteAnnouncement(announcement)}
+                    >
+                      <DeleteIcon />
+                    </button>
+                  </div>
+
+                  {editingAnnouncement?.id === announcement.id && (
+                    <form className="admin-announcement-edit-form" onSubmit={handleAnnouncementEditSubmit}>
+                      <input
+                        value={announcementEditForm.title}
+                        onChange={(event) =>
+                          setAnnouncementEditForm((currentForm) => ({
+                            ...currentForm,
+                            title: event.target.value
+                          }))
+                        }
+                        placeholder="Announcement title"
+                      />
+                      <textarea
+                        rows="3"
+                        value={announcementEditForm.message}
+                        onChange={(event) =>
+                          setAnnouncementEditForm((currentForm) => ({
+                            ...currentForm,
+                            message: event.target.value
+                          }))
+                        }
+                        placeholder="Announcement message"
+                      />
+                      <div className="admin-announcement-edit-actions">
+                        <button type="submit">Save changes</button>
+                        <button type="button" className="secondary-button" onClick={cancelEditingAnnouncement}>
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </article>
+              ))}
+            </div>
+          ) : isAnnouncementHistoryOpen ? (
+            <div className="profile-empty-state admin-announcement-empty">
+              <h3>No announcements yet</h3>
+              <p>Sent announcements will appear here so admins can edit them later.</p>
+            </div>
+          ) : null}
+
+          {isAnnouncementHistoryOpen && announcementEditFeedback && (
+            <p className="rooms-feedback">{announcementEditFeedback}</p>
+          )}
+        </div>
       </section>
 
       <section className="admin-section-block">

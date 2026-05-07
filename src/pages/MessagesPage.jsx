@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
+import { MessageDeleteIcon, MessageEditIcon } from '../components/MessageActionIcons';
 import UserAvatar from '../components/UserAvatar';
 
 const formatMessageTime = (dateValue) =>
@@ -37,6 +38,33 @@ const MESSAGE_ATTACHMENT_MAX_SIZE = 2 * 1024 * 1024;
 const MESSAGE_ATTACHMENT_MAX_TOTAL_SIZE = 2.5 * 1024 * 1024;
 const MESSAGE_ATTACHMENT_ACCEPT =
   'image/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.zip';
+const MESSAGE_PRIVACY_TIP_STORAGE_KEY = 'luminote-dismissed-message-privacy-tips';
+
+const readDismissedPrivacyTipKeys = () => {
+  try {
+    if (typeof window === 'undefined') {
+      return [];
+    }
+
+    const storedKeys = JSON.parse(window.localStorage.getItem(MESSAGE_PRIVACY_TIP_STORAGE_KEY) || '[]');
+
+    return Array.isArray(storedKeys) ? storedKeys : [];
+  } catch {
+    return [];
+  }
+};
+
+const writeDismissedPrivacyTipKeys = (keys) => {
+  try {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.localStorage.setItem(MESSAGE_PRIVACY_TIP_STORAGE_KEY, JSON.stringify(keys));
+  } catch {
+    // This hint is optional, so private browsing storage failures can be ignored.
+  }
+};
 
 const getCompactDisplayName = (name = '') => {
   const normalizedName = name.trim() || 'User';
@@ -104,8 +132,7 @@ const VoiceWaveform = ({ voice, isPlaying = false, progress = 0, onSeek }) => (
   <span
     className={`message-voice-waveform ${isPlaying ? 'message-voice-waveform-playing' : ''}`}
     style={{
-      '--voice-play-duration': `${Math.max(0.8, Number(voice?.duration) || 1)}s`,
-      '--voice-play-delay': `${-(Math.max(0.8, Number(voice?.duration) || 1) * Math.max(0, Math.min(1, progress)))}s`
+      '--voice-playhead-progress': `${Math.max(0, Math.min(1, progress)) * 100}%`
     }}
     role="button"
     tabIndex={0}
@@ -130,16 +157,17 @@ const VoiceWaveform = ({ voice, isPlaying = false, progress = 0, onSeek }) => (
         style={{ '--voice-bar-height': `${height}px` }}
       />
     ))}
-    <span
-      className="message-voice-waveform-playhead"
-      style={{ '--voice-playhead-progress': `${Math.max(0, Math.min(1, progress)) * 100}%` }}
-    />
+    <span className="message-voice-waveform-playhead" />
   </span>
 );
 
 const getMessagePreview = (message) => {
   if (!message) {
     return 'No messages yet. Start a new conversation.';
+  }
+
+  if (message.unsentAt) {
+    return 'Message was unsent';
   }
 
   if (message.voice) {
@@ -163,7 +191,9 @@ const MessagesPage = ({
   messages,
   onSendDirectMessage,
   onMarkConversationRead,
-  onDeleteDirectConversation
+  onDeleteDirectConversation,
+  onUnsendDirectMessage,
+  onEditDirectMessage
 }) => {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -182,6 +212,11 @@ const MessagesPage = ({
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [playingVoiceId, setPlayingVoiceId] = useState('');
   const [voicePlaybackProgress, setVoicePlaybackProgress] = useState({ messageId: '', progress: 0 });
+  const [dismissedPrivacyTipKeys, setDismissedPrivacyTipKeys] = useState(readDismissedPrivacyTipKeys);
+  const [activeMessageActionId, setActiveMessageActionId] = useState('');
+  const [editingMessageId, setEditingMessageId] = useState('');
+  const [editDraft, setEditDraft] = useState('');
+  const [editError, setEditError] = useState('');
   const selectedUserId = activeUserId;
   const threadRef = React.useRef(null);
   const syncedRouteUserRef = React.useRef(routeUserId);
@@ -193,6 +228,7 @@ const MessagesPage = ({
   const voicePlaybackRef = React.useRef({ messageId: '', audio: null });
   const voiceProgressFrameRef = React.useRef(null);
   const fileInputRef = React.useRef(null);
+  const messageHoldTimerRef = React.useRef(null);
 
   const directContacts = useMemo(
     () => users.filter((user) => user.id !== currentUser.id),
@@ -238,7 +274,8 @@ const MessagesPage = ({
       }
 
       const existingSummary = summaryMap.get(message.conversationKey);
-      const isUnread = message.senderId !== currentUser.id && !(message.readBy || []).includes(currentUser.id);
+      const isUnread =
+        !message.unsentAt && message.senderId !== currentUser.id && !(message.readBy || []).includes(currentUser.id);
 
       if (!existingSummary) {
         summaryMap.set(message.conversationKey, {
@@ -324,10 +361,102 @@ const MessagesPage = ({
   const hasUnreadActiveMessages = useMemo(
     () =>
       activeMessages.some(
-        (message) => message.senderId !== currentUser.id && !(message.readBy || []).includes(currentUser.id)
+        (message) =>
+          !message.unsentAt && message.senderId !== currentUser.id && !(message.readBy || []).includes(currentUser.id)
       ),
     [activeMessages, currentUser.id]
   );
+  const shouldShowPrivacyTip =
+    activeConversationKey && activeMessages.length === 0 && !dismissedPrivacyTipKeys.includes(activeConversationKey);
+
+  const dismissPrivacyTip = () => {
+    if (!activeConversationKey) {
+      return;
+    }
+
+    setDismissedPrivacyTipKeys((currentKeys) => {
+      if (currentKeys.includes(activeConversationKey)) {
+        return currentKeys;
+      }
+
+      const nextKeys = [...currentKeys, activeConversationKey];
+      writeDismissedPrivacyTipKeys(nextKeys);
+
+      return nextKeys;
+    });
+  };
+
+  const clearMessageHoldTimer = () => {
+    if (messageHoldTimerRef.current) {
+      window.clearTimeout(messageHoldTimerRef.current);
+      messageHoldTimerRef.current = null;
+    }
+  };
+
+  const handleMessageHoldStart = (messageId, canUnsendMessage) => {
+    if (!canUnsendMessage) {
+      return;
+    }
+
+    clearMessageHoldTimer();
+    messageHoldTimerRef.current = window.setTimeout(() => {
+      setActiveMessageActionId(messageId);
+      messageHoldTimerRef.current = null;
+    }, 520);
+  };
+
+  const handleMessageHoldEnd = () => {
+    clearMessageHoldTimer();
+  };
+
+  const handleUnsendMessage = (messageId) => {
+    clearMessageHoldTimer();
+    setActiveMessageActionId('');
+
+    const result = onUnsendDirectMessage?.(messageId);
+
+    if (result && !result.success) {
+      setAttachmentError(result.message);
+      return;
+    }
+
+    if (editingMessageId === messageId) {
+      setEditingMessageId('');
+      setEditDraft('');
+      setEditError('');
+    }
+  };
+
+  const handleStartEditMessage = (message) => {
+    clearMessageHoldTimer();
+    setActiveMessageActionId('');
+    setEditingMessageId(message.id);
+    setEditDraft(message.text || '');
+    setEditError('');
+  };
+
+  const handleCancelEditMessage = () => {
+    setEditingMessageId('');
+    setEditDraft('');
+    setEditError('');
+  };
+
+  const handleSaveEditMessage = async (event) => {
+    event.preventDefault();
+
+    if (!editingMessageId) {
+      return;
+    }
+
+    const result = await Promise.resolve(onEditDirectMessage?.(editingMessageId, editDraft));
+
+    if (result?.success) {
+      handleCancelEditMessage();
+      return;
+    }
+
+    setEditError(result?.message || 'Luminote could not edit this message.');
+  };
 
   useEffect(() => {
     if (!activeConversationKey || !hasUnreadActiveMessages) {
@@ -357,6 +486,10 @@ const MessagesPage = ({
     setAttachmentError('');
     setOpenAttachmentMenuId('');
     setActiveImageAttachment(null);
+    setActiveMessageActionId('');
+    setEditingMessageId('');
+    setEditDraft('');
+    setEditError('');
     setRecordingSeconds(0);
     setPlayingVoiceId('');
     setVoicePlaybackProgress({ messageId: '', progress: 0 });
@@ -379,6 +512,7 @@ const MessagesPage = ({
         window.cancelAnimationFrame(voiceProgressFrameRef.current);
       }
 
+      clearMessageHoldTimer();
       if (mediaRecorderRef.current?.state === 'recording') {
         mediaRecorderRef.current.stop();
       }
@@ -501,7 +635,7 @@ const MessagesPage = ({
 
     const updateProgress = () => {
       const duration = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : fallbackDuration;
-      const progress = duration > 0 ? audio.currentTime / duration : 0;
+      const progress = duration > 0 ? Math.max(0, Math.min(1, audio.currentTime / duration)) : 0;
 
       setVoicePlaybackProgress({ messageId, progress });
 
@@ -654,7 +788,7 @@ const MessagesPage = ({
       stopVoiceProgressLoop();
       voicePlaybackRef.current = { messageId: '', audio: null };
       setPlayingVoiceId('');
-      setVoicePlaybackProgress({ messageId: '', progress: 0 });
+      setVoicePlaybackProgress({ messageId, progress: 1 });
     };
     audio.onerror = () => {
       stopVoiceProgressLoop();
@@ -683,6 +817,7 @@ const MessagesPage = ({
       .play()
       .then(() => {
         setPlayingVoiceId(messageId);
+        startVoiceProgressLoop(messageId, audio, voice.duration || 0);
       })
       .catch(() => {
         stopVoiceProgressLoop();
@@ -721,6 +856,7 @@ const MessagesPage = ({
     setAttachmentDrafts([]);
     setAttachmentError('');
     setOpenAttachmentMenuId('');
+    setActiveMessageActionId('');
 
     if (selectedUserId === userId) {
       syncedRouteUserRef.current = '';
@@ -749,6 +885,7 @@ const MessagesPage = ({
           setAttachmentDrafts([]);
           setAttachmentError('');
           setOpenAttachmentMenuId('');
+          setActiveMessageActionId('');
           syncedRouteUserRef.current = '';
           setActiveUserId('');
           setSearchParams({}, { replace: true });
@@ -824,16 +961,97 @@ const MessagesPage = ({
 
         <div className="messages-thread" ref={threadRef}>
           {activeMessages.length > 0 ? (
-            activeMessages.map((message) => {
-              const isOwnMessage = message.senderId === currentUser.id;
+              activeMessages.map((message) => {
+                const isOwnMessage = message.senderId === currentUser.id;
+                const isUnsentMessage = Boolean(message.unsentAt);
+                const canManageMessage = isOwnMessage && !isUnsentMessage;
+                const canEditMessage = canManageMessage && Boolean((message.text || '').trim());
+                const isEditingMessage = editingMessageId === message.id;
 
-              return (
-                <article
+                return (
+                  <article
                   key={message.id}
-                  className={`message-bubble ${isOwnMessage ? 'message-bubble-own' : 'message-bubble-other'}`}
-                >
-                  {message.text && <p>{message.text}</p>}
-                  {message.voice && (
+                  className={`message-bubble ${isOwnMessage ? 'message-bubble-own' : 'message-bubble-other'} ${
+                    isUnsentMessage ? 'message-bubble-unsent' : ''
+                    } ${activeMessageActionId === message.id ? 'message-bubble-actions-visible' : ''}`}
+                    onPointerDown={(event) => {
+                      if (event.pointerType !== 'mouse') {
+                        handleMessageHoldStart(message.id, canManageMessage);
+                      }
+                    }}
+                  onPointerUp={handleMessageHoldEnd}
+                  onPointerCancel={handleMessageHoldEnd}
+                    onPointerLeave={handleMessageHoldEnd}
+                    onContextMenu={(event) => {
+                      if (!canManageMessage) {
+                        return;
+                      }
+
+                    event.preventDefault();
+                    clearMessageHoldTimer();
+                    setActiveMessageActionId(message.id);
+                    }}
+                  >
+                  {canManageMessage && !isEditingMessage && (
+                    <div className="message-bubble-actions" aria-label="Message actions">
+                      {canEditMessage && (
+                        <button
+                          type="button"
+                          className="message-action-button message-edit-button"
+                          aria-label="Edit message"
+                          title="Edit message"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleStartEditMessage(message);
+                          }}
+                        >
+                          <MessageEditIcon />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="message-action-button message-unsend-button"
+                        aria-label="Delete message"
+                        title="Delete message"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleUnsendMessage(message.id);
+                        }}
+                      >
+                        <MessageDeleteIcon />
+                      </button>
+                    </div>
+                  )}
+                  {isUnsentMessage && (
+                    <p className="message-unsent-text">
+                      {isOwnMessage ? 'You unsent this message.' : 'This message was unsent.'}
+                    </p>
+                  )}
+                  {!isUnsentMessage && isEditingMessage ? (
+                    <form className="message-edit-form" onSubmit={handleSaveEditMessage}>
+                      <textarea
+                        value={editDraft}
+                        onChange={(event) => setEditDraft(event.target.value)}
+                        rows="3"
+                        aria-label="Edit message text"
+                      />
+                      {editError && <span className="message-edit-error">{editError}</span>}
+                      <div className="message-edit-actions">
+                        <button type="submit">Save</button>
+                        <button type="button" className="secondary-button" onClick={handleCancelEditMessage}>
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    !isUnsentMessage && message.text && (
+                      <>
+                        <p>{message.text}</p>
+                        {message.editedAt && <small className="message-edited-label">Edited</small>}
+                      </>
+                    )
+                  )}
+                  {!isUnsentMessage && message.voice && (
                     <div className="message-voice-note">
                       <button
                         type="button"
@@ -854,7 +1072,7 @@ const MessagesPage = ({
                       </span>
                     </div>
                   )}
-                  {(message.attachments || []).length > 0 && (
+                  {!isUnsentMessage && (message.attachments || []).length > 0 && (
                     <div className="message-attachment-list">
                       {message.attachments.map((attachment) => {
                         const attachmentMenuId = `${message.id}-${attachment.id}`;
@@ -939,6 +1157,14 @@ const MessagesPage = ({
             multiple
             onChange={handleAttachmentChange}
           />
+          {shouldShowPrivacyTip && (
+            <div className="messages-privacy-bubble" role="status">
+              <span>Private messages are only visible to you and {selectedUser.name}.</span>
+              <button type="button" aria-label="Dismiss private message notice" onClick={dismissPrivacyTip}>
+                x
+              </button>
+            </div>
+          )}
           <textarea
             rows="1"
             value={draft}
@@ -998,7 +1224,6 @@ const MessagesPage = ({
             {attachmentError && <p className="messages-voice-error">{attachmentError}</p>}
           </div>
           <div className="messages-composer-footer">
-            <small>Private messages are only visible to you and {selectedCompactName}.</small>
             <div className="messages-composer-actions">
               <button
                 type="button"

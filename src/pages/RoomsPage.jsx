@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-const RoomsPage = ({ currentUser, rooms, onCreateRoom, onJoinRoom, getRoomLink }) => {
+const RoomsPage = ({ currentUser, rooms, onCreateRoom, onJoinRoom }) => {
   const navigate = useNavigate();
   const [createForm, setCreateForm] = useState({
     name: '',
@@ -46,15 +46,6 @@ const RoomsPage = ({ currentUser, rooms, onCreateRoom, onJoinRoom, getRoomLink }
     if (result.success) {
       setJoinCode('');
       navigate(`/rooms/${result.room.id}`);
-    }
-  };
-
-  const copyValue = async (value, successMessage) => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setFeedback(successMessage);
-    } catch {
-      setFeedback('Copy failed on this device, but you can still copy the text manually.');
     }
   };
 
@@ -131,30 +122,25 @@ const RoomsPage = ({ currentUser, rooms, onCreateRoom, onJoinRoom, getRoomLink }
         {rooms.length > 0 ? (
           <div className="rooms-grid">
             {rooms.map((room) => (
-              <article key={room.id} className="room-card">
+              <Link
+                key={room.id}
+                to={`/rooms/${room.id}`}
+                className="room-card room-card-link"
+                aria-label={`Open ${room.name}`}
+              >
                 <div className="room-card-top">
                   <span className="status-pill status-neutral">{room.subject}</span>
                   <span className="ownership-badge ownership-badge-original">{room.code}</span>
                 </div>
                 <h3>{room.name}</h3>
                 <p>{room.description || 'No description yet. Use this room for group notes and class invites.'}</p>
-                <div className="room-card-meta">
-                  <small>Created by {room.ownerName}</small>
-                  <small>{room.memberIds.length} member(s)</small>
+                <div className="room-card-footer">
+                  <div className="room-card-meta">
+                    <small>Created by {room.ownerName}</small>
+                    <small>{room.memberIds.length} member(s)</small>
+                  </div>
                 </div>
-                <div className="room-card-actions">
-                  <Link to={`/rooms/${room.id}`} className="card-link-button">
-                    Open room
-                  </Link>
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => copyValue(getRoomLink(room), 'Room link copied to your clipboard.')}
-                  >
-                    Copy invite link
-                  </button>
-                </div>
-              </article>
+              </Link>
             ))}
           </div>
         ) : (

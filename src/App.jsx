@@ -744,15 +744,32 @@ const getNotificationDedupeKey = (notification) => {
   return notification.id;
 };
 
+const getAnnouncementGroupKey = (notification) =>
+  notification.announcementId ||
+  `legacy:${notification.createdAt || ''}:${notification.title || ''}:${notification.message || ''}`;
+
+const getAnnouncementLink = (notification) =>
+  `/?announcement=${encodeURIComponent(notification.announcementId || notification.id)}`;
+
+const toInboxNotification = (notification) => ({
+  ...notification,
+  kind: 'notification',
+  link: notification.type === 'announcement' ? getAnnouncementLink(notification) : notification.link
+});
+
 const normalizeNotifications = (notifications) =>
   (notifications || [])
     .map((notification) => ({
       ...notification,
+      announcementId: notification.announcementId || '',
       actorId: notification.actorId || '',
       sourceId: notification.sourceId || '',
       sourceType: notification.sourceType || '',
       dedupeKey: notification.dedupeKey || '',
       createdAt: notification.createdAt || new Date().toISOString(),
+      updatedAt: notification.updatedAt || null,
+      editedAt: notification.editedAt || null,
+      editedBy: notification.editedBy || '',
       readAt: notification.readAt || null
     }))
     .filter((notification, index, normalizedNotifications) => {
@@ -769,6 +786,10 @@ const normalizeMessages = (messages) =>
     text: message.text || '',
     voice: message.voice || null,
     attachments: Array.isArray(message.attachments) ? message.attachments : [],
+    unsentAt: message.unsentAt || null,
+    unsentBy: message.unsentBy || '',
+    editedAt: message.editedAt || null,
+    editedBy: message.editedBy || '',
     mentions: Array.isArray(message.mentions) ? message.mentions : [],
     participants: [...new Set(message.participants || [])],
     readBy: [...new Set(message.readBy || [message.senderId].filter(Boolean))],
@@ -1502,6 +1523,51 @@ function App() {
     return sortNewest(notifications.filter((notification) => notification.targetUserId === currentUser.id));
   }, [currentUser, notifications]);
 
+  const userAnnouncements = useMemo(
+    () => userNotifications.filter((notification) => notification.type === 'announcement'),
+    [userNotifications]
+  );
+
+  const announcementGroups = useMemo(() => {
+    const userNameById = new Map(users.map((user) => [user.id, user.name]));
+    const groupedAnnouncements = new Map();
+
+    notifications
+      .filter((notification) => notification.type === 'announcement')
+      .forEach((notification) => {
+        const groupKey = getAnnouncementGroupKey(notification);
+        const existingAnnouncement = groupedAnnouncements.get(groupKey);
+        const targetName = userNameById.get(notification.targetUserId) || 'Unknown user';
+
+        if (existingAnnouncement) {
+          existingAnnouncement.notificationIds.push(notification.id);
+          existingAnnouncement.targetUserIds.push(notification.targetUserId);
+          existingAnnouncement.targetNames.push(targetName);
+          existingAnnouncement.recipientCount += 1;
+          return;
+        }
+
+        groupedAnnouncements.set(groupKey, {
+          id: groupKey,
+          announcementId: notification.announcementId || '',
+          notificationIds: [notification.id],
+          targetUserIds: [notification.targetUserId],
+          targetNames: [targetName],
+          recipientCount: 1,
+          title: notification.title || 'Announcement',
+          message: notification.message || '',
+          createdAt: notification.createdAt,
+          updatedAt: notification.updatedAt || null,
+          editedAt: notification.editedAt || null,
+          editedBy: notification.editedBy || ''
+        });
+      });
+
+    return sortNewest([...groupedAnnouncements.values()]);
+  }, [notifications, users]);
+
+  const homeAnnouncements = currentUser?.role === 'admin' ? announcementGroups : userAnnouncements;
+
   const adminInboxReports = useMemo(
     () =>
       sortNewest(reports.filter((report) => report.status === 'open')).map((report) => ({
@@ -1532,10 +1598,10 @@ function App() {
 
   const inboxItems = currentUser?.role === 'admin'
     ? sortNewest([
-        ...userNotifications.map((notification) => ({ ...notification, kind: 'notification' })),
+        ...userNotifications.map(toInboxNotification),
         ...adminInboxReports
       ])
-    : userNotifications.map((notification) => ({ ...notification, kind: 'notification' }));
+    : userNotifications.map(toInboxNotification);
 
   const joinedRooms = useMemo(() => {
     if (!currentUser) {
@@ -2599,7 +2665,7 @@ function App() {
       };
     }
 
-    const trimmedText = text.trim();
+    const trimmedText = String(text || '').trim();
     const voice = options.voice || null;
     const attachments = Array.isArray(options.attachments) ? options.attachments : [];
     const targetUser = users.find((user) => user.id === targetUserId);
@@ -2643,6 +2709,8 @@ function App() {
       text: trimmedText,
       voice: uploadedVoice,
       attachments: uploadedAttachments,
+      unsentAt: null,
+      unsentBy: '',
       createdAt: now,
       updatedAt: now,
       readBy: [currentUser.id],
@@ -2676,7 +2744,7 @@ function App() {
     };
   };
 
-  const handleSendRoomMessage = (roomId, text, options = {}) => {
+  const handleSendRoomMessage = async (roomId, text, options = {}) => {
     if (!currentUser) {
       return {
         success: false,
@@ -2684,20 +2752,40 @@ function App() {
       };
     }
 
-    const trimmedText = text.trim();
+    const trimmedText = String(text || '').trim();
     const room = rooms.find((item) => item.id === roomId);
     const mentions = Array.isArray(options.mentions) ? options.mentions : [];
+    const voice = options.voice || null;
+    const attachments = Array.isArray(options.attachments) ? options.attachments : [];
 
-    if (!trimmedText || !room || !room.memberIds.includes(currentUser.id)) {
+    if ((!trimmedText && !voice && attachments.length === 0) || !room || !room.memberIds.includes(currentUser.id)) {
       return {
         success: false,
-        message: 'Only room members can send messages here.'
+        message: 'Only room members can send text, files, images, or voice notes here.'
       };
     }
 
     const now = new Date().toISOString();
+    const messageId = `message-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    let uploadedAttachments = [];
+    let uploadedVoice = voice;
+
+    try {
+      uploadedAttachments = await uploadAttachmentsToStorage(attachments, {
+        collection: 'room-message-attachments',
+        itemId: messageId,
+        ownerId: currentUser.id
+      });
+      uploadedVoice = await uploadVoiceDraftToStorage(voice, messageId);
+    } catch (error) {
+      return {
+        success: false,
+        message: getAttachmentUploadErrorMessage(error, 'room message attachment')
+      };
+    }
+
     const nextMessage = {
-      id: `message-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: messageId,
       type: 'room',
       roomId,
       participants: [...room.memberIds],
@@ -2705,6 +2793,10 @@ function App() {
       senderId: currentUser.id,
       senderName: currentUser.name,
       text: trimmedText,
+      voice: uploadedVoice,
+      attachments: uploadedAttachments,
+      unsentAt: null,
+      unsentBy: '',
       mentions,
       createdAt: now,
       updatedAt: now,
@@ -2764,6 +2856,213 @@ function App() {
       return hasChanged ? nextMessages : previousMessages;
     });
     Promise.all(updatedMessages.map((message) => writeDbItem(DB_KEYS.messages, message).catch(() => undefined)));
+  };
+
+  const handleUnsendDirectMessage = (messageId) => {
+    if (!currentUser || !messageId) {
+      return {
+        success: false,
+        message: 'Please choose a message first.'
+      };
+    }
+
+    const targetMessage = messages.find(
+      (message) => message.id === messageId && message.type === 'direct' && message.senderId === currentUser.id
+    );
+
+    if (!targetMessage) {
+      return {
+        success: false,
+        message: 'You can only unsend messages that you sent.'
+      };
+    }
+
+    if (targetMessage.unsentAt) {
+      return {
+        success: true,
+        message: 'Message was already unsent.'
+      };
+    }
+
+    const now = new Date().toISOString();
+    const updatedMessage = {
+      ...targetMessage,
+      text: '',
+      voice: null,
+      attachments: [],
+      unsentAt: now,
+      unsentBy: currentUser.id,
+      updatedAt: now
+    };
+
+    setMessages((previousMessages) =>
+      previousMessages.map((message) => (message.id === messageId ? updatedMessage : message))
+    );
+    writeDbItem(DB_KEYS.messages, updatedMessage).catch(() => undefined);
+
+    return {
+      success: true,
+      message: 'Message unsent.'
+    };
+  };
+
+  const handleEditDirectMessage = (messageId, text) => {
+    if (!currentUser || !messageId) {
+      return {
+        success: false,
+        message: 'Please choose a message first.'
+      };
+    }
+
+    const trimmedText = String(text || '').trim();
+
+    if (!trimmedText) {
+      return {
+        success: false,
+        message: 'Edited message cannot be empty.'
+      };
+    }
+
+    const targetMessage = messages.find(
+      (message) => message.id === messageId && message.type === 'direct' && message.senderId === currentUser.id
+    );
+
+    if (!targetMessage || targetMessage.unsentAt) {
+      return {
+        success: false,
+        message: 'You can only edit messages that you sent.'
+      };
+    }
+
+    if ((targetMessage.text || '').trim() === trimmedText) {
+      return {
+        success: true,
+        message: 'No message changes to save.'
+      };
+    }
+
+    const now = new Date().toISOString();
+    const updatedMessage = {
+      ...targetMessage,
+      text: trimmedText,
+      editedAt: now,
+      editedBy: currentUser.id,
+      updatedAt: now
+    };
+
+    setMessages((previousMessages) =>
+      previousMessages.map((message) => (message.id === messageId ? updatedMessage : message))
+    );
+    writeDbItem(DB_KEYS.messages, updatedMessage).catch(() => undefined);
+
+    return {
+      success: true,
+      message: 'Message edited.'
+    };
+  };
+
+  const handleUnsendRoomMessage = (messageId) => {
+    if (!currentUser || !messageId) {
+      return {
+        success: false,
+        message: 'Please choose a room message first.'
+      };
+    }
+
+    const targetMessage = messages.find(
+      (message) => message.id === messageId && message.type === 'room' && message.senderId === currentUser.id
+    );
+
+    if (!targetMessage) {
+      return {
+        success: false,
+        message: 'You can only unsend room messages that you sent.'
+      };
+    }
+
+    if (targetMessage.unsentAt) {
+      return {
+        success: true,
+        message: 'Message was already unsent.'
+      };
+    }
+
+    const now = new Date().toISOString();
+    const updatedMessage = {
+      ...targetMessage,
+      text: '',
+      voice: null,
+      attachments: [],
+      unsentAt: now,
+      unsentBy: currentUser.id,
+      updatedAt: now
+    };
+
+    setMessages((previousMessages) =>
+      previousMessages.map((message) => (message.id === messageId ? updatedMessage : message))
+    );
+    writeDbItem(DB_KEYS.messages, updatedMessage).catch(() => undefined);
+
+    return {
+      success: true,
+      message: 'Room message unsent.'
+    };
+  };
+
+  const handleEditRoomMessage = (messageId, text, options = {}) => {
+    if (!currentUser || !messageId) {
+      return {
+        success: false,
+        message: 'Please choose a room message first.'
+      };
+    }
+
+    const trimmedText = String(text || '').trim();
+
+    if (!trimmedText) {
+      return {
+        success: false,
+        message: 'Edited room message cannot be empty.'
+      };
+    }
+
+    const targetMessage = messages.find(
+      (message) => message.id === messageId && message.type === 'room' && message.senderId === currentUser.id
+    );
+
+    if (!targetMessage || targetMessage.unsentAt) {
+      return {
+        success: false,
+        message: 'You can only edit room messages that you sent.'
+      };
+    }
+
+    if ((targetMessage.text || '').trim() === trimmedText) {
+      return {
+        success: true,
+        message: 'No room message changes to save.'
+      };
+    }
+
+    const now = new Date().toISOString();
+    const updatedMessage = {
+      ...targetMessage,
+      text: trimmedText,
+      mentions: Array.isArray(options.mentions) ? options.mentions : targetMessage.mentions || [],
+      editedAt: now,
+      editedBy: currentUser.id,
+      updatedAt: now
+    };
+
+    setMessages((previousMessages) =>
+      previousMessages.map((message) => (message.id === messageId ? updatedMessage : message))
+    );
+    writeDbItem(DB_KEYS.messages, updatedMessage).catch(() => undefined);
+
+    return {
+      success: true,
+      message: 'Room message edited.'
+    };
   };
 
   const handleDeleteDirectConversation = (conversationKey) => {
@@ -2857,14 +3156,19 @@ function App() {
     }
 
     const createdAt = new Date().toISOString();
+    const announcementId = `announcement-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const announcementNotifications = targets.map((user, index) => ({
       id: `notification-${Date.now()}-${index}-${user.id}`,
+      announcementId,
       targetUserId: user.id,
       title,
       message,
       type: 'announcement',
-      link: '/notifications',
+      link: getAnnouncementLink({ announcementId }),
       createdAt,
+      updatedAt: null,
+      editedAt: null,
+      editedBy: '',
       readAt: null
     }));
 
@@ -2878,6 +3182,144 @@ function App() {
     return {
       success: true,
       message: audience === 'all' ? 'Announcement sent to all users.' : 'Announcement sent successfully.'
+    };
+  };
+
+  const handleUpdateAnnouncement = ({ notificationIds = [], announcementId = '', title, message }) => {
+    if (currentUser?.role !== 'admin') {
+      return {
+        success: false,
+        message: 'Only admins can edit announcements.'
+      };
+    }
+
+    const trimmedTitle = String(title || '').trim();
+    const trimmedMessage = String(message || '').trim();
+
+    if (!trimmedTitle || !trimmedMessage) {
+      return {
+        success: false,
+        message: 'Please complete the announcement title and message.'
+      };
+    }
+
+    const notificationIdSet = new Set(notificationIds);
+    const now = new Date().toISOString();
+    const updatedAnnouncements = notifications
+      .filter(
+        (notification) =>
+          notification.type === 'announcement' &&
+          (notificationIdSet.has(notification.id) ||
+            (announcementId && notification.announcementId === announcementId))
+      )
+      .map((notification) => ({
+        ...notification,
+        title: trimmedTitle,
+        message: trimmedMessage,
+        updatedAt: now,
+        editedAt: now,
+        editedBy: currentUser.id
+      }));
+
+    if (updatedAnnouncements.length === 0) {
+      return {
+        success: false,
+        message: 'That announcement could not be found.'
+      };
+    }
+
+    const updatedAnnouncementById = new Map(
+      updatedAnnouncements.map((notification) => [notification.id, notification])
+    );
+
+    setNotifications((previousNotifications) =>
+      previousNotifications.map((notification) => updatedAnnouncementById.get(notification.id) || notification)
+    );
+    Promise.all(
+      updatedAnnouncements.map((notification) =>
+        writeDbItem(DB_KEYS.notifications, notification).catch(() => undefined)
+      )
+    );
+
+    return {
+      success: true,
+      message: `Announcement updated for ${updatedAnnouncements.length} recipient(s).`
+    };
+  };
+
+  const handleDeleteAnnouncement = async ({ notificationIds = [], announcementId = '' }) => {
+    if (currentUser?.role !== 'admin') {
+      return {
+        success: false,
+        message: 'Only admins can delete announcements.'
+      };
+    }
+
+    const notificationIdSet = new Set(notificationIds);
+    const announcementsToDelete = notifications.filter(
+      (notification) =>
+        notification.type === 'announcement' &&
+        (notificationIdSet.has(notification.id) ||
+          (announcementId && notification.announcementId === announcementId))
+    );
+
+    if (announcementsToDelete.length === 0) {
+      return {
+        success: false,
+        message: 'That announcement could not be found.'
+      };
+    }
+
+    try {
+      await Promise.all(announcementsToDelete.map((notification) => deleteDbItem(DB_KEYS.notifications, notification.id)));
+    } catch {
+      const message = 'Luminote could not delete that announcement in Supabase. Please refresh and try again.';
+      setCloudSyncError(message);
+
+      return {
+        success: false,
+        message
+      };
+    }
+
+    const idsToDelete = new Set(announcementsToDelete.map((notification) => notification.id));
+
+    setNotifications((previousNotifications) =>
+      previousNotifications.filter((notification) => !idsToDelete.has(notification.id))
+    );
+    setCloudSyncError('');
+
+    return {
+      success: true,
+      message: `Announcement deleted for ${announcementsToDelete.length} recipient(s).`
+    };
+  };
+
+  const requestDeleteAnnouncement = (announcement, options = {}) => {
+    if (!announcement) {
+      return {
+        success: false,
+        message: 'That announcement could not be found.'
+      };
+    }
+
+    openModal({
+      variant: 'danger',
+      title: `Delete "${announcement.title}"?`,
+      message: 'This removes the announcement from the homepage and inbox for every recipient.',
+      confirmLabel: 'Delete announcement',
+      onConfirm: async () => {
+        const result = await handleDeleteAnnouncement({
+          announcementId: announcement.announcementId,
+          notificationIds: announcement.notificationIds
+        });
+        closeModal();
+        options.onComplete?.(result);
+      }
+    });
+
+    return {
+      success: true
     };
   };
 
@@ -3361,6 +3803,121 @@ function App() {
     writeDbItem(DB_KEYS.rooms, nextRooms.find((room) => room.id === roomId)).catch(() => undefined);
   };
 
+  const handleDeleteRoom = async (roomId) => {
+    if (!currentUser) {
+      return {
+        success: false,
+        message: 'Please log in before deleting a room.'
+      };
+    }
+
+    const targetRoom = rooms.find((room) => room.id === roomId);
+
+    if (!targetRoom) {
+      return {
+        success: false,
+        message: 'That room could not be found.'
+      };
+    }
+
+    const canDeleteRoom =
+      currentUser.role === 'admin' ||
+      targetRoom.ownerId === currentUser.id ||
+      (targetRoom.adminIds || []).includes(currentUser.id);
+
+    if (!canDeleteRoom) {
+      return {
+        success: false,
+        message: 'Only room admins can delete this room.'
+      };
+    }
+
+    const removedNotes = notes.filter((note) => note.roomId === roomId);
+    const removedPosts = forumPosts.filter((post) => post.roomId === roomId);
+    const removedMessages = messages.filter(
+      (message) => message.type === 'room' && (message.roomId === roomId || message.conversationKey === `room:${roomId}`)
+    );
+    const removedReports = reports.filter((report) => report.roomId === roomId);
+    const removedNotifications = notifications.filter((notification) => notification.link?.includes(`/rooms/${roomId}`));
+
+    try {
+      await Promise.all([
+        deleteDbItem(DB_KEYS.rooms, roomId),
+        ...removedNotes.map((note) => deleteDbItem(DB_KEYS.notes, note.id)),
+        ...removedPosts.map((post) => deleteDbItem(DB_KEYS.forum, post.id)),
+        ...removedMessages.map((message) => deleteDbItem(DB_KEYS.messages, message.id)),
+        ...removedReports.map((report) => deleteDbItem(DB_KEYS.reports, report.id)),
+        ...removedNotifications.map((notification) => deleteDbItem(DB_KEYS.notifications, notification.id))
+      ]);
+    } catch {
+      const message = `Luminote could not delete "${targetRoom.name}" in Supabase. Please refresh and try again.`;
+      setCloudSyncError(message);
+
+      return {
+        success: false,
+        message
+      };
+    }
+
+    const nextRooms = rooms.filter((room) => room.id !== roomId);
+    const nextNotes = notes.filter((note) => note.roomId !== roomId);
+    const nextForumPosts = forumPosts.filter((post) => post.roomId !== roomId);
+    const nextMessages = messages.filter(
+      (message) => !(message.type === 'room' && (message.roomId === roomId || message.conversationKey === `room:${roomId}`))
+    );
+    const nextReports = reports.filter((report) => report.roomId !== roomId);
+    const nextNotifications = notifications.filter((notification) => !notification.link?.includes(`/rooms/${roomId}`));
+
+    setRooms(nextRooms);
+    setNotes(nextNotes);
+    setForumPosts(nextForumPosts);
+    setMessages(nextMessages);
+    setReports(nextReports);
+    setNotifications(nextNotifications);
+    writeCollectionStorage({
+      users,
+      notes: nextNotes,
+      forumPosts: nextForumPosts,
+      messages: nextMessages,
+      notifications: nextNotifications,
+      reports: nextReports,
+      rooms: nextRooms
+    });
+    setCloudSyncError('');
+
+    return {
+      success: true,
+      message: `"${targetRoom.name}" was deleted.`
+    };
+  };
+
+  const requestDeleteRoom = (roomId, options = {}) => {
+    const targetRoom = rooms.find((room) => room.id === roomId);
+
+    if (!targetRoom) {
+      return {
+        success: false,
+        message: 'That room could not be found.'
+      };
+    }
+
+    openModal({
+      variant: 'danger',
+      title: `Delete "${targetRoom.name}"?`,
+      message: 'This permanently removes the room, its private notes, forum posts, and room chat messages.',
+      confirmLabel: 'Delete room',
+      onConfirm: async () => {
+        const result = await handleDeleteRoom(roomId);
+        closeModal();
+        options.onComplete?.(result);
+      }
+    });
+
+    return {
+      success: true
+    };
+  };
+
   const sortedForumPosts = useMemo(
     () =>
       normalizeForumPosts(forumPosts)
@@ -3485,6 +4042,7 @@ function App() {
               <HomePage
                 notes={publicNotes}
                 currentUser={currentUser}
+                announcements={homeAnnouncements}
                 onToggleLike={handleToggleLike}
                 onDelete={requestDeleteNote}
                 onEdit={startEditingNote}
@@ -3514,6 +4072,8 @@ function App() {
                 onSendDirectMessage={handleSendDirectMessage}
                 onMarkConversationRead={handleMarkConversationRead}
                 onDeleteDirectConversation={requestDeleteDirectConversation}
+                onUnsendDirectMessage={handleUnsendDirectMessage}
+                onEditDirectMessage={handleEditDirectMessage}
               />
             }
           />
@@ -3615,7 +4175,6 @@ function App() {
                 rooms={joinedRooms}
                 onCreateRoom={handleCreateRoom}
                 onJoinRoom={handleJoinRoom}
-                getRoomLink={buildRoomLink}
               />
             }
           />
@@ -3636,6 +4195,8 @@ function App() {
                 onCreateRoomPost={handleCreateRoomPost}
                 onSendRoomMessage={handleSendRoomMessage}
                 onMarkRoomMessagesRead={handleMarkRoomMessagesRead}
+                onUnsendRoomMessage={handleUnsendRoomMessage}
+                onEditRoomMessage={handleEditRoomMessage}
                 onVotePost={handleVoteForumPost}
                 onCommentPost={handleCommentOnPost}
                 onDeletePost={requestDeleteForumPost}
@@ -3646,6 +4207,7 @@ function App() {
                 onRefreshRooms={loadLatestRooms}
                 onPromoteMember={handlePromoteRoomMember}
                 onKickMember={handleKickRoomMember}
+                onDeleteRoom={requestDeleteRoom}
                 getRoomLink={buildRoomLink}
               />
             }
@@ -3675,11 +4237,14 @@ function App() {
                   allNotes={sortNewest(notes.filter((note) => !note.roomId))}
                   reports={sortNewest(reports)}
                   users={users}
+                  announcements={announcementGroups}
                   onApprove={requestApproveNote}
                   onReject={requestRejectNote}
                   onDelete={requestDeleteNote}
                   onResolveReport={handleResolveReport}
                   onCreateAnnouncement={createAnnouncementNotifications}
+                  onUpdateAnnouncement={handleUpdateAnnouncement}
+                  onDeleteAnnouncement={requestDeleteAnnouncement}
                 />
               ) : (
                 <Navigate to="/" replace />

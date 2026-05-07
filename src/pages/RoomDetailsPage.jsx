@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import ForumVoteControls from '../components/ForumVoteControls';
 import {
   appendMention,
@@ -16,8 +16,61 @@ const ReportIcon = () => (
     />
   </svg>
 );
+
+const BackRoomsIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path
+      d="M15 5 8 12l7 7M9 12h11"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2.2"
+    />
+  </svg>
+);
+
+const DeleteRoomIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path
+      d="M9 4h6m-8 4h10m-8 0 .45 10.2A2 2 0 0 0 11.45 20h1.1a2 2 0 0 0 2-1.8L15 8"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    />
+  </svg>
+);
+
+const PromoteMemberIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path
+      d="M9.5 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm-6 8a6 6 0 0 1 12 0M17 8h4m-2-2v4"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    />
+  </svg>
+);
+
+const KickMemberIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <path
+      d="M9.5 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm-6 8a6 6 0 0 1 12 0M17 8h4"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    />
+  </svg>
+);
 import NoteList from '../components/NoteList';
 import RoomChatPanel from '../components/RoomChatPanel';
+import UserAvatar from '../components/UserAvatar';
 import UploadForm from '../components/UploadForm';
 
 const formatDate = (dateValue) =>
@@ -52,6 +105,8 @@ const RoomDetailsPage = ({
   onCreateRoomPost,
   onSendRoomMessage,
   onMarkRoomMessagesRead,
+  onUnsendRoomMessage,
+  onEditRoomMessage,
   onVotePost,
   onCommentPost,
   onDeletePost,
@@ -62,10 +117,12 @@ const RoomDetailsPage = ({
   onRefreshRooms,
   onPromoteMember,
   onKickMember,
+  onDeleteRoom,
   getRoomLink
 }) => {
   const { roomId } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [feedback, setFeedback] = useState('');
   const [postForm, setPostForm] = useState({
@@ -75,7 +132,9 @@ const RoomDetailsPage = ({
   });
   const [commentDrafts, setCommentDrafts] = useState({});
   const [replyTargets, setReplyTargets] = useState({});
+  const [openRoomComments, setOpenRoomComments] = useState({});
   const [showComposer, setShowComposer] = useState(Boolean(editingNote?.roomId === roomId));
+  const [showForumComposer, setShowForumComposer] = useState(false);
   const [showMembersPanel, setShowMembersPanel] = useState(false);
   const room = rooms.find((item) => item.id === roomId);
   const inviteCode = searchParams.get('invite') || '';
@@ -114,9 +173,10 @@ const RoomDetailsPage = ({
 
   const roomEditingNote = editingNote?.roomId === roomId ? editingNote : null;
   const isMember = room?.memberIds.includes(currentUser.id);
-  const isRoomAdmin = room?.adminIds?.includes(currentUser.id) || room?.ownerId === currentUser.id;
+  const isRoomAdmin = currentUser.role === 'admin' || room?.adminIds?.includes(currentUser.id) || room?.ownerId === currentUser.id;
   const isComposerVisible = showComposer || Boolean(roomEditingNote);
   const mentionUsers = members.filter((member) => member.id !== currentUser.id);
+  const roomReturnRoute = `${location.pathname}${location.search}`;
 
   useEffect(() => {
     if (!room) {
@@ -179,6 +239,22 @@ const RoomDetailsPage = ({
     return result;
   };
 
+  const handleDeleteRoom = () => {
+    const result = onDeleteRoom?.(room.id, {
+      onComplete: (actionResult) => {
+        setFeedback(actionResult.message);
+
+        if (actionResult.success) {
+          navigate('/rooms', { replace: true });
+        }
+      }
+    });
+
+    if (result?.message) {
+      setFeedback(result.message);
+    }
+  };
+
   const handleCreatePost = (event) => {
     event.preventDefault();
 
@@ -198,6 +274,7 @@ const RoomDetailsPage = ({
       body: '',
       tag: 'Discussion'
     });
+    setShowForumComposer(false);
     setFeedback('Your room post is now visible to members of this classroom.');
   };
 
@@ -212,6 +289,7 @@ const RoomDetailsPage = ({
       parentId: replyTargets[postId]?.id || null,
       mentions: findMentionedUsers(text, mentionUsers)
     });
+    setOpenRoomComments((current) => ({ ...current, [postId]: true }));
     setCommentDrafts((currentDrafts) => ({
       ...currentDrafts,
       [postId]: ''
@@ -267,148 +345,191 @@ const RoomDetailsPage = ({
     <div className="page room-details-page">
       <div className="room-hero">
         <div className="room-hero-copy">
-          <span className="dashboard-strip-label">Private classroom</span>
+          <div className="room-hero-titlebar">
+            <Link to="/rooms" className="secondary-button room-back-button">
+              <span className="room-toolbar-action-icon">
+                <BackRoomsIcon />
+              </span>
+              <span className="room-toolbar-action-label">Back to rooms</span>
+            </Link>
+            <span className="dashboard-strip-label">Private classroom</span>
+            {isRoomAdmin && (
+              <button type="button" className="room-delete-button" onClick={handleDeleteRoom}>
+                <span className="room-toolbar-action-icon">
+                  <DeleteRoomIcon />
+                </span>
+                <span className="room-toolbar-action-label">Delete room</span>
+              </button>
+            )}
+          </div>
           <h1>{room.name}</h1>
-          <p>{room.description || 'A private classroom-style room where students can gather through an invite.'}</p>
+          <p>{room.description || 'Private notes, chat, and forum for this room.'}</p>
           <div className="room-hero-tags">
             <span className="status-pill status-neutral">{room.subject}</span>
             <span className="ownership-badge ownership-badge-original">Code {room.code}</span>
             <span className="ownership-badge ownership-badge-referenced">Private space</span>
           </div>
           <div className="room-hero-meta">
-            <small>Created by {room.ownerName}</small>
+            <small>By {room.ownerName}</small>
             <small>{members.length} member(s)</small>
             <small>{formatDate(room.createdAt)}</small>
           </div>
         </div>
-
-        <div className="room-hero-card">
-          <h2>{isMember ? 'Room access unlocked' : 'Join this room'}</h2>
-          <p>
-            {isMember
-              ? 'Inside this room, only members can view the notes, uploads, and discussions shared here.'
-              : 'This invite points to a private classroom space. Join first to see its notes and discussions.'}
-          </p>
-          <div className="room-card-actions">
-            {isMember ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => copyValue(room.code, 'Room code copied to your clipboard.')}
-                >
-                  Copy room code
-                </button>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => copyValue(getRoomLink(room), 'Invite link copied to your clipboard.')}
-                >
-                  Copy invite link
-                </button>
-              </>
-            ) : (
-              <button type="button" onClick={handleJoinRoom}>
-                Join room
-              </button>
-            )}
-          </div>
-          {feedback && <div className="rooms-feedback room-feedback-inline">{feedback}</div>}
-        </div>
       </div>
 
-      <section className="rooms-list-section">
-        <div className="rooms-list-header">
-          <h2>Members</h2>
-          <p>Only these people can view this private classroom server.</p>
-        </div>
-        <div className="room-card-actions room-toolbar">
-          <button
-            type="button"
-            className="room-members-toggle"
-            onClick={() => setShowMembersPanel((current) => !current)}
-          >
-            {showMembersPanel ? 'Hide members' : 'View members'}
-          </button>
-        </div>
-
-        {showMembersPanel && (
-          <div className="rooms-grid">
-            {members.map((member) => {
-              const memberIsOwner = member.id === room.ownerId;
-              const memberIsAdmin = room.adminIds?.includes(member.id) || memberIsOwner;
-
-              return (
-                <article key={member.id} className="room-card room-member-card">
-                  <div className="room-card-top">
-                    <span className="ownership-badge ownership-badge-original">
-                      {memberIsOwner ? 'Room owner' : memberIsAdmin ? 'Room admin' : 'Member'}
-                    </span>
-                    <span className="status-pill status-neutral">{member.role}</span>
-                  </div>
-                  <h3>{member.name}</h3>
-                  <p>{member.bio}</p>
-                  <div className="room-card-meta">
-                    <small>{member.email}</small>
-                  </div>
-                  {isRoomAdmin && member.id !== currentUser.id && (
-                    <div className="room-member-actions">
-                      {!memberIsAdmin && (
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          onClick={() => {
-                            onPromoteMember(room.id, member.id);
-                            setFeedback(`${member.name} is now a room admin.`);
-                          }}
-                        >
-                          Make admin
-                        </button>
-                      )}
-                      {!memberIsOwner && (
-                        <button
-                          type="button"
-                          className="card-link-button card-link-button-danger"
-                          onClick={() => {
-                            onKickMember(room.id, member.id);
-                            setFeedback(`${member.name} was removed from the room.`);
-                          }}
-                        >
-                          Kick member
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </article>
-              );
-            })}
+      <div className="room-overview-grid">
+        <section className="rooms-list-section room-members-section">
+          <div className="rooms-list-header">
+            <h2>Members</h2>
+            <div className="room-members-header-actions">
+              <button
+                type="button"
+                className="room-members-toggle"
+                onClick={() => setShowMembersPanel((current) => !current)}
+              >
+                {showMembersPanel ? 'Hide members' : 'View members'}
+              </button>
+              {isMember ? (
+                <>
+                  <button
+                    type="button"
+                    className="secondary-button room-access-button"
+                    onClick={() => copyValue(room.code, 'Room code copied to your clipboard.')}
+                  >
+                    Copy code
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button room-access-button"
+                    onClick={() => copyValue(getRoomLink(room), 'Invite link copied to your clipboard.')}
+                  >
+                    Invite link
+                  </button>
+                </>
+              ) : (
+                <button type="button" className="room-access-button" onClick={handleJoinRoom}>
+                  Join room
+                </button>
+              )}
+            </div>
           </div>
-        )}
-      </section>
+          {feedback && <div className="rooms-feedback room-feedback-inline">{feedback}</div>}
+
+          {showMembersPanel && (
+            <div className="room-members-list">
+              {members.map((member) => {
+                const memberIsOwner = member.id === room.ownerId;
+                const memberIsAdmin = room.adminIds?.includes(member.id) || memberIsOwner;
+                const memberProfilePath = member.id === currentUser.id ? '/profile' : `/users/${member.id}`;
+
+                return (
+                  <article key={member.id} className="room-member-row">
+                    <Link
+                      to={memberProfilePath}
+                      state={{ from: roomReturnRoute }}
+                      className="room-member-main"
+                      onClick={() => sessionStorage.setItem('classsync-profile-return-route', roomReturnRoute)}
+                    >
+                      <UserAvatar user={member} size="sm" />
+                      <div className="room-member-copy">
+                        <div className="room-member-name-row">
+                          <strong>{member.name}</strong>
+                          <span className="status-pill status-neutral">{member.role}</span>
+                        </div>
+                        <p>{member.bio || member.email}</p>
+                        <small>{member.email}</small>
+                      </div>
+                    </Link>
+                    <div className="room-member-badges">
+                      <span className="ownership-badge ownership-badge-original">
+                        {memberIsOwner ? 'Owner' : memberIsAdmin ? 'Admin' : 'Member'}
+                      </span>
+                    </div>
+                    {isRoomAdmin && member.id !== currentUser.id && (
+                      <div className="room-member-actions">
+                        {!memberIsAdmin && (
+                          <button
+                            type="button"
+                            className="secondary-button room-member-action-button room-member-promote-button"
+                            aria-label={`Make ${member.name} a room admin`}
+                            title="Make admin"
+                            onClick={() => {
+                              onPromoteMember(room.id, member.id);
+                              setFeedback(`${member.name} is now a room admin.`);
+                            }}
+                          >
+                            <span className="room-member-action-icon">
+                              <PromoteMemberIcon />
+                            </span>
+                            <span className="room-member-action-label">Make admin</span>
+                          </button>
+                        )}
+                        {!memberIsOwner && (
+                          <button
+                            type="button"
+                            className="card-link-button card-link-button-danger room-member-action-button room-member-kick-button"
+                            aria-label={`Kick ${member.name} from the room`}
+                            title="Kick member"
+                            onClick={() => {
+                              onKickMember(room.id, member.id);
+                              setFeedback(`${member.name} was removed from the room.`);
+                            }}
+                          >
+                            <span className="room-member-action-icon">
+                              <KickMemberIcon />
+                            </span>
+                            <span className="room-member-action-label">Kick member</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </div>
+
+      {isMember && (
+        <RoomChatPanel
+          room={room}
+          members={members}
+          currentUser={currentUser}
+          messages={roomMessages}
+          onSendRoomMessage={onSendRoomMessage}
+          onMarkRoomMessagesRead={onMarkRoomMessagesRead}
+          onUnsendRoomMessage={onUnsendRoomMessage}
+          onEditRoomMessage={onEditRoomMessage}
+        />
+      )}
 
       {isMember && (
         <>
-          <section className="rooms-list-section">
-            <div className="rooms-list-header">
-              <h2>Private notes</h2>
-              <p>These uploads are visible only to room members, not on the public server.</p>
-            </div>
+          <section className="rooms-list-section room-private-notes-section">
+            <div className="rooms-list-header room-section-header">
+              <div>
+                <h2>Private notes</h2>
+                <p>Room-only uploads.</p>
+              </div>
 
-            <div className="room-card-actions room-toolbar">
-              <button type="button" onClick={() => setShowComposer((current) => !current)}>
-                {roomEditingNote ? 'Continue editing note' : isComposerVisible ? 'Hide room uploader' : 'Upload to room'}
-              </button>
-              {roomEditingNote && (
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => {
-                    onCancelEdit();
-                    setShowComposer(false);
-                  }}
-                >
-                  Cancel room edit
+              <div className="room-section-header-actions">
+                <button type="button" onClick={() => setShowComposer((current) => !current)}>
+                  {roomEditingNote ? 'Continue editing' : isComposerVisible ? 'Hide uploader' : 'Upload note'}
                 </button>
-              )}
+                {roomEditingNote && (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => {
+                      onCancelEdit();
+                      setShowComposer(false);
+                    }}
+                  >
+                    Cancel edit
+                  </button>
+                )}
+              </div>
             </div>
 
             {isComposerVisible && (
@@ -437,41 +558,51 @@ const RoomDetailsPage = ({
             ) : (
               <div className="profile-empty-state">
                 <h3>No room notes yet</h3>
-                <p>Upload the first private note for this classroom and it will stay visible only to members.</p>
+                <p>Upload the first room note.</p>
               </div>
             )}
           </section>
 
-          <section className="rooms-list-section">
-            <div className="rooms-list-header">
-              <h2>Private room forum</h2>
-              <p>Ask room-specific questions, request notes, and share ideas only with members here.</p>
+          <section className="rooms-list-section room-private-forum-section">
+            <div className="rooms-list-header room-section-header">
+              <div>
+                <h2>Room forum</h2>
+                <p>Room-only questions and ideas.</p>
+              </div>
+
+              <div className="room-section-header-actions">
+                <button type="button" onClick={() => setShowForumComposer((current) => !current)}>
+                  {showForumComposer ? 'Hide composer' : 'New post'}
+                </button>
+              </div>
             </div>
 
-            <form className="forum-form" onSubmit={handleCreatePost}>
-              <div className="forum-form-grid">
-                <input
-                  value={postForm.title}
-                  onChange={(event) => setPostForm((current) => ({ ...current, title: event.target.value }))}
-                  placeholder="Post title"
+            {showForumComposer && (
+              <form className="forum-form room-forum-composer" onSubmit={handleCreatePost}>
+                <div className="forum-form-grid">
+                  <input
+                    value={postForm.title}
+                    onChange={(event) => setPostForm((current) => ({ ...current, title: event.target.value }))}
+                    placeholder="Post title"
+                  />
+                  <select
+                    value={postForm.tag}
+                    onChange={(event) => setPostForm((current) => ({ ...current, tag: event.target.value }))}
+                  >
+                    <option value="Discussion">Discussion</option>
+                    <option value="Request">Request</option>
+                    <option value="Idea">Idea</option>
+                  </select>
+                </div>
+                <textarea
+                  value={postForm.body}
+                  onChange={(event) => setPostForm((current) => ({ ...current, body: event.target.value }))}
+                  rows="4"
+                  placeholder="Share a room-only question, note request, or idea"
                 />
-                <select
-                  value={postForm.tag}
-                  onChange={(event) => setPostForm((current) => ({ ...current, tag: event.target.value }))}
-                >
-                  <option value="Discussion">Discussion</option>
-                  <option value="Request">Request</option>
-                  <option value="Idea">Idea</option>
-                </select>
-              </div>
-              <textarea
-                value={postForm.body}
-                onChange={(event) => setPostForm((current) => ({ ...current, body: event.target.value }))}
-                rows="4"
-                placeholder="Share a room-only question, note request, or idea"
-              />
-              <button type="submit">Post to room forum</button>
-            </form>
+                <button type="submit">Post to room forum</button>
+              </form>
+            )}
 
             {roomScopedPosts.length > 0 ? (
               <div className="forum-list">
@@ -528,79 +659,99 @@ const RoomDetailsPage = ({
                       <h3>{post.title}</h3>
                       <p>{post.body}</p>
 
-                      <div className="forum-comment-list">
-                        {post.comments.length > 0 ? (
-                          (() => {
-                            const commentsByParent = post.comments.reduce((groups, comment) => {
-                              const parentKey = comment.parentId || 'root';
-                              groups.set(parentKey, [...(groups.get(parentKey) || []), comment]);
-                              return groups;
-                            }, new Map());
-
-                            return (commentsByParent.get('root') || []).map((comment) =>
-                              renderRoomComment(post, comment, commentsByParent)
-                            );
-                          })()
-                        ) : (
-                          <div className="forum-comment forum-comment-empty">
-                            <p>No comments yet. Start the room thread.</p>
-                          </div>
-                        )}
-                      </div>
-                      <div className="forum-comment-form">
-                        {replyTargets[post.id] && (
-                          <div className="forum-comment-replying">
-                            Replying to {replyTargets[post.id].userName}
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setReplyTargets((currentTargets) => ({
-                                  ...currentTargets,
-                                  [post.id]: null
-                                }))
-                              }
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        )}
-                        <textarea
-                          rows="2"
-                          value={commentDrafts[post.id] || ''}
-                          placeholder={`Reply as ${currentUser.name}. Type @ to mention a member.`}
-                          onChange={(event) =>
-                            setCommentDrafts((currentDrafts) => ({
-                              ...currentDrafts,
-                              [post.id]: event.target.value
-                            }))
-                          }
-                        />
-                        {getMentionSuggestions(commentDrafts[post.id] || '', mentionUsers).length > 0 && (
-                          <div className="mention-suggestions" aria-label="Mention suggestions">
-                            {getMentionSuggestions(commentDrafts[post.id] || '', mentionUsers).map((user) => (
-                              <button
-                                key={user.id}
-                                type="button"
-                                className="mention-suggestion-button"
-                                onClick={() =>
-                                  setCommentDrafts((currentDrafts) => ({
-                                    ...currentDrafts,
-                                    [post.id]: appendMention(currentDrafts[post.id] || '', user)
-                                  }))
-                                }
-                              >
-                                @{user.name}
-                              </button>
-                            ))}
-                          </div>
-                        )}
+                      <div className="forum-comment-toggle-row">
                         <button
                           type="button"
-                          onClick={() => submitRoomComment(post.id)}
+                          className="forum-comment-toggle"
+                          onClick={() =>
+                            setOpenRoomComments((current) => ({
+                              ...current,
+                              [post.id]: !current[post.id]
+                            }))
+                          }
                         >
-                          {replyTargets[post.id] ? 'Reply' : 'Comment'}
+                          {openRoomComments[post.id] ? 'Hide comments' : `Show comments (${post.comments.length})`}
                         </button>
                       </div>
+
+                      {openRoomComments[post.id] && (
+                        <>
+                          <div className="forum-comment-list">
+                            {post.comments.length > 0 ? (
+                              (() => {
+                                const commentsByParent = post.comments.reduce((groups, comment) => {
+                                  const parentKey = comment.parentId || 'root';
+                                  groups.set(parentKey, [...(groups.get(parentKey) || []), comment]);
+                                  return groups;
+                                }, new Map());
+
+                                return (commentsByParent.get('root') || []).map((comment) =>
+                                  renderRoomComment(post, comment, commentsByParent)
+                                );
+                              })()
+                            ) : (
+                              <div className="forum-comment forum-comment-empty">
+                                <p>No comments yet. Start the room thread.</p>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="forum-comment-form">
+                            {replyTargets[post.id] && (
+                              <div className="forum-comment-replying">
+                                Replying to {replyTargets[post.id].userName}
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setReplyTargets((currentTargets) => ({
+                                      ...currentTargets,
+                                      [post.id]: null
+                                    }))
+                                  }
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            )}
+                            <textarea
+                              rows="2"
+                              value={commentDrafts[post.id] || ''}
+                              placeholder={`Reply as ${currentUser.name}. Type @ to mention a member.`}
+                              onChange={(event) =>
+                                setCommentDrafts((currentDrafts) => ({
+                                  ...currentDrafts,
+                                  [post.id]: event.target.value
+                                }))
+                              }
+                            />
+                            {getMentionSuggestions(commentDrafts[post.id] || '', mentionUsers).length > 0 && (
+                              <div className="mention-suggestions" aria-label="Mention suggestions">
+                                {getMentionSuggestions(commentDrafts[post.id] || '', mentionUsers).map((user) => (
+                                  <button
+                                    key={user.id}
+                                    type="button"
+                                    className="mention-suggestion-button"
+                                    onClick={() =>
+                                      setCommentDrafts((currentDrafts) => ({
+                                        ...currentDrafts,
+                                        [post.id]: appendMention(currentDrafts[post.id] || '', user)
+                                      }))
+                                    }
+                                  >
+                                    @{user.name}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => submitRoomComment(post.id)}
+                            >
+                              {replyTargets[post.id] ? 'Reply' : 'Comment'}
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </article>
                 ))}
@@ -608,19 +759,10 @@ const RoomDetailsPage = ({
             ) : (
               <div className="profile-empty-state">
                 <h3>No room posts yet</h3>
-                <p>Start the first private discussion so members can talk inside this room only.</p>
+                <p>Start the first room discussion.</p>
               </div>
             )}
           </section>
-
-          <RoomChatPanel
-            room={room}
-            members={members}
-            currentUser={currentUser}
-            messages={roomMessages}
-            onSendRoomMessage={onSendRoomMessage}
-            onMarkRoomMessagesRead={onMarkRoomMessagesRead}
-          />
         </>
       )}
     </div>
