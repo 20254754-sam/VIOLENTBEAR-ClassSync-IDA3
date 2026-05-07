@@ -1,5 +1,5 @@
 {
-  "name": "finalized",
+  "name": "luminote",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -8,6 +8,7 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "migrate:attachments": "node scripts/migrate-attachments-to-storage.mjs",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
   },

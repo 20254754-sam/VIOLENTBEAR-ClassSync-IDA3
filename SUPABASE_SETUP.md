@@ -28,7 +28,7 @@ For GitHub Pages, add the same values to your deployment workflow or build envir
 
 ## 3. Create the database schema
 
-Run the SQL from [supabase/luminote-schema.sql](/C:/Users/Asus/Desktop/Samem%20Files/FinalAptech/finalized/supabase/luminote-schema.sql) inside the Supabase SQL editor.
+Run the SQL from [supabase/luminote-schema.sql](/C:/Users/Asus/Desktop/Samem%20Files/FinalAptech/Luminote/supabase/luminote-schema.sql) inside the Supabase SQL editor.
 
 That script creates:
 
@@ -41,6 +41,8 @@ That script creates:
 - `luminote_rooms`
 - `luminote_reports`
 - `luminote_notifications`
+- public Storage bucket `luminote-attachments`
+- backup tables `luminote_notes_backup_before_storage` and `luminote_messages_backup_before_storage`
 
 The new frontend storage model uses one Supabase row per user, note, forum post, and room instead of storing each whole collection in a single shared JSON row.
 
@@ -49,10 +51,26 @@ Important:
 - this is much safer than the old shared-blob design because one stale browser can no longer overwrite the entire users list or the full forum in a single write
 - the SQL also migrates existing legacy `app_state` data into the new per-record tables
 - the SQL also copies existing `classsync_*` table data into the matching `luminote_*` tables for the Luminote rename
-- uploads are still stored inside each note payload for now, so they remain visible without adding a separate storage bucket
+- new uploads are stored in Supabase Storage, and note/message payloads keep only small attachment metadata
 - the current RLS policies stay intentionally simple because the app still uses browser-side auth patterns; they can be hardened later if you add real Supabase Auth
 
-## 4. Important GitHub Pages note
+## 4. Move existing base64 attachments to Storage
+
+After running the SQL, run this once from the project folder:
+
+```bash
+npm run migrate:attachments
+```
+
+This uploads old base64 note/message attachments to `luminote-attachments` and updates the matching payload rows with Storage URLs.
+
+Important:
+
+- keep the backup tables until the deployed app is confirmed working
+- the migration may consume some egress once, but future refreshes should be much lighter
+- do not run the migration until the SQL has successfully created the bucket and policies
+
+## 5. Important GitHub Pages note
 
 GitHub Pages is only serving the frontend files. The shared app behavior comes from Supabase, not from GitHub itself.
 
@@ -64,13 +82,15 @@ That means these features can work publicly after integration:
 - cross-device forum posts and comments
 - persistent accounts
 
-## 5. Current repo status
+## 6. Current repo status
 
 The repo now includes:
 
 - `.env.example` with the required frontend variables
 - `src/lib/supabaseClient.js` for the shared browser client
-- `src/lib/classsyncDb.js` with the safer per-record sync layer and automatic legacy migration fallback
-- `supabase/luminote-schema.sql` with the new per-record tables, policies, and legacy migration SQL
+- `src/lib/classsyncDb.js` with per-record sync, Storage uploads, and automatic legacy migration fallback
+- `supabase/luminote-schema.sql` with per-record tables, Storage bucket policies, backups, and legacy migration SQL
+- `scripts/migrate-attachments-to-storage.mjs` for one-time base64 attachment migration
+- route-scoped loading/realtime so the app does not refresh every large table on every page load
 
-The app still needs one-time SQL setup in your Supabase dashboard before the live shared database can work.
+The app still needs the SQL setup and one-time attachment migration before the live shared database is fully optimized.

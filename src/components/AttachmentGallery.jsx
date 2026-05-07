@@ -26,6 +26,8 @@ const formatDate = (value) =>
     minute: '2-digit'
   });
 
+const getAttachmentUrl = (attachment = {}) => attachment.url || attachment.dataUrl || '';
+
 const AttachmentGallery = ({ attachments = [] }) => {
   const [activeAttachmentId, setActiveAttachmentId] = useState(null);
   const [detailsAttachmentId, setDetailsAttachmentId] = useState(null);
@@ -65,10 +67,10 @@ const AttachmentGallery = ({ attachments = [] }) => {
             Close
           </button>
         </div>
-        <img src={activeAttachment.url} alt={activeAttachment.name} className="attachment-lightbox-image" />
+        <img src={getAttachmentUrl(activeAttachment)} alt={activeAttachment.name} className="attachment-lightbox-image" />
         <div className="attachment-lightbox-footer">
           <small>Press Esc to close</small>
-          <a href={activeAttachment.url} download={activeAttachment.name} className="attachment-download-button">
+          <a href={getAttachmentUrl(activeAttachment)} download={activeAttachment.name} className="attachment-download-button">
             Download image
           </a>
         </div>
@@ -109,7 +111,7 @@ const AttachmentGallery = ({ attachments = [] }) => {
                   className="attachment-image-button"
                   onClick={() => setActiveAttachmentId(attachment.id)}
                 >
-                  <img src={attachment.url} alt={attachment.name} className="attachment-image-preview" />
+                  <img src={getAttachmentUrl(attachment)} alt={attachment.name} className="attachment-image-preview" />
                 </button>
               )}
 
@@ -119,11 +121,11 @@ const AttachmentGallery = ({ attachments = [] }) => {
                     View image
                   </button>
                 ) : (
-                  <a href={attachment.url} target="_blank" rel="noreferrer" className="attachment-view-button">
+                  <a href={getAttachmentUrl(attachment)} target="_blank" rel="noreferrer" className="attachment-view-button">
                     Open file
                   </a>
                 )}
-                <a href={attachment.url} download={attachment.name} className="attachment-download-button">
+                <a href={getAttachmentUrl(attachment)} download={attachment.name} className="attachment-download-button">
                   Download
                 </a>
               </div>

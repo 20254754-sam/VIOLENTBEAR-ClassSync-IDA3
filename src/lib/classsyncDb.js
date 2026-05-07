@@ -6,6 +6,8 @@ const STORE_NAME = 'app_state';
 const LEGACY_CLOUD_TABLE = 'app_state';
 const CLOUD_READ_TIMEOUT_MS = 4500;
 const CLOUD_WRITE_TIMEOUT_MS = 4500;
+const CLOUD_CACHE_TTL_MS = 5 * 60 * 1000;
+export const ATTACHMENT_BUCKET = 'luminote-attachments';
 
 const CLOUD_TABLES = {
   forum: 'luminote_forum_posts',
@@ -19,6 +21,24 @@ const CLOUD_TABLES = {
 };
 
 let dbPromise = null;
+
+const getCloudCacheKey = (key) => `luminote-cloud-read-at:${key}`;
+
+const getLastCloudReadAt = (key) => {
+  try {
+    return Number(window.localStorage.getItem(getCloudCacheKey(key))) || 0;
+  } catch {
+    return 0;
+  }
+};
+
+const setLastCloudReadAt = (key) => {
+  try {
+    window.localStorage.setItem(getCloudCacheKey(key), String(Date.now()));
+  } catch {
+    // Local cache timestamps are best effort only.
+  }
+};
 
 const withTimeout = (promise, timeoutMs, message) =>
   Promise.race([
@@ -92,6 +112,94 @@ const getCloudTable = (key) => CLOUD_TABLES[key] || null;
 
 export const getDbTableName = (key) => getCloudTable(key);
 
+export const getAttachmentUrl = (attachment = {}) => attachment.url || attachment.dataUrl || '';
+
+const isDataUrl = (value = '') => typeof value === 'string' && value.startsWith('data:');
+
+const sanitizeStorageSegment = (value = 'file') =>
+  String(value)
+    .trim()
+    .replace(/[^a-z0-9._-]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 90) || 'file';
+
+const normalizeAttachmentMetadata = (attachment = {}) => {
+  const fallbackUrl = getAttachmentUrl(attachment);
+  const normalized = {
+    id: attachment.id || `attachment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name: attachment.name || 'Attachment',
+    type: attachment.type || 'application/octet-stream',
+    size: attachment.size || 0,
+    attachedAt: attachment.attachedAt || new Date().toISOString(),
+    isImage: Boolean(attachment.isImage),
+    url: attachment.url || fallbackUrl,
+    storagePath: attachment.storagePath || '',
+    bucket: attachment.bucket || ''
+  };
+
+  if (attachment.dataUrl && !attachment.url) {
+    normalized.dataUrl = attachment.dataUrl;
+  }
+
+  return normalized;
+};
+
+const dataUrlToBlob = async (dataUrl) => {
+  const response = await fetch(dataUrl);
+  return response.blob();
+};
+
+export const uploadAttachmentsToStorage = async (attachments = [], options = {}) => {
+  const safeAttachments = Array.isArray(attachments) ? attachments : [];
+
+  if (safeAttachments.length === 0) {
+    return [];
+  }
+
+  return Promise.all(
+    safeAttachments.map(async (attachment, index) => {
+      const normalized = normalizeAttachmentMetadata(attachment);
+      const sourceUrl = getAttachmentUrl(attachment);
+
+      if (!isSupabaseConfigured || !isDataUrl(sourceUrl)) {
+        return normalized;
+      }
+
+      const blob = await dataUrlToBlob(sourceUrl);
+      const collection = sanitizeStorageSegment(options.collection || 'attachments');
+      const ownerId = sanitizeStorageSegment(options.ownerId || 'anonymous');
+      const itemId = sanitizeStorageSegment(options.itemId || `item-${Date.now()}`);
+      const fileName = sanitizeStorageSegment(normalized.name);
+      const storagePath = `${collection}/${ownerId}/${itemId}/${Date.now()}-${index}-${fileName}`;
+      const { error } = await supabase.storage
+        .from(ATTACHMENT_BUCKET)
+        .upload(storagePath, blob, {
+          cacheControl: '31536000',
+          contentType: normalized.type,
+          upsert: true
+        });
+
+      if (error) {
+        throw error;
+      }
+
+      const { data } = supabase.storage.from(ATTACHMENT_BUCKET).getPublicUrl(storagePath);
+
+      return {
+        id: normalized.id,
+        name: normalized.name,
+        type: normalized.type,
+        size: normalized.size || blob.size,
+        attachedAt: normalized.attachedAt,
+        isImage: normalized.isImage,
+        url: data.publicUrl,
+        storagePath,
+        bucket: ATTACHMENT_BUCKET
+      };
+    })
+  );
+};
+
 const readLocalDbValue = async (key, fallback) => {
   try {
     const result = await withStore('readonly', (store) => store.get(key));
@@ -126,24 +234,42 @@ const readLegacyCloudDbValue = async (key, fallback) => {
   return data?.value ?? fallback;
 };
 
-const readCloudCollection = async (key) => {
+const readCloudCollection = async (key, options = {}) => {
   const tableName = getCloudTable(key);
 
   if (!tableName) {
     throw new Error(`Unsupported collection key: ${key}`);
   }
 
-  const { data, error } = await supabase
+  let query = supabase
     .from(tableName)
     .select('payload')
     .order('updated_at', { ascending: false })
     .order('created_at', { ascending: false });
+
+  if (Number.isFinite(options.limit) && options.limit > 0) {
+    query = query.limit(options.limit);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     throw error;
   }
 
   return dedupeCollection((data || []).map((row) => row.payload).filter(Boolean));
+};
+
+const upsertLocalDbItem = async (key, item) => {
+  const currentValue = await readLocalDbValue(key, []);
+  const currentItems = isArray(currentValue) ? currentValue : [];
+  const itemId = String(item?.id);
+  const itemExists = currentItems.some((currentItem) => String(currentItem?.id) === itemId);
+  const nextValue = itemExists
+    ? currentItems.map((currentItem) => (String(currentItem?.id) === itemId ? item : currentItem))
+    : [item, ...currentItems];
+
+  await writeLocalDbValue(key, nextValue);
 };
 
 const upsertCloudCollection = async (key, value) => {
@@ -167,6 +293,27 @@ const upsertCloudCollection = async (key, value) => {
   }));
 
   const { error } = await supabase.from(tableName).upsert(rows, { onConflict: 'id' });
+
+  if (error) {
+    throw error;
+  }
+};
+
+const upsertCloudCollectionItem = async (key, item) => {
+  const tableName = getCloudTable(key);
+
+  if (!tableName) {
+    throw new Error(`Unsupported collection key: ${key}`);
+  }
+
+  const row = {
+    created_at: item.createdAt || new Date().toISOString(),
+    id: String(item.id),
+    payload: item,
+    updated_at: getCollectionTimestamp(item)
+  };
+
+  const { error } = await supabase.from(tableName).upsert(row, { onConflict: 'id' });
 
   if (error) {
     throw error;
@@ -198,14 +345,14 @@ const migrateLegacyCloudCollection = async (key) => {
   return legacyValue;
 };
 
-const readCloudDbValue = async (key, fallback) => {
+const readCloudDbValue = async (key, fallback, options = {}) => {
   const tableName = getCloudTable(key);
 
   if (!tableName) {
     return readLegacyCloudDbValue(key, fallback);
   }
 
-  const cloudCollection = await readCloudCollection(key);
+  const cloudCollection = await readCloudCollection(key, options);
 
   if (cloudCollection.length > 0) {
     return cloudCollection;
@@ -247,6 +394,7 @@ export const readDbValue = async (key, fallback) => {
   if (isSupabaseConfigured) {
     try {
       const cloudValue = await readCloudDbValue(key, fallback);
+      setLastCloudReadAt(key);
       await writeLocalDbValue(key, cloudValue);
       return cloudValue;
     } catch {
@@ -255,6 +403,18 @@ export const readDbValue = async (key, fallback) => {
   }
 
   return readLocalDbValue(key, fallback);
+};
+
+export const writeDbItem = async (key, item) => {
+  await upsertLocalDbItem(key, item);
+
+  if (isSupabaseConfigured && getCloudTable(key)) {
+    await withTimeout(
+      upsertCloudCollectionItem(key, item),
+      CLOUD_WRITE_TIMEOUT_MS,
+      `Cloud item write timed out for ${key}.`
+    );
+  }
 };
 
 export const writeDbValue = async (key, value) => {
@@ -290,14 +450,14 @@ export const readManyDbValues = async (entries) => {
   }, {});
 };
 
-export const readDbSnapshot = async (key) => {
+export const readDbSnapshot = async (key, options = {}) => {
   const localValue = await withTimeout(
     readLocalDbValue(key, undefined),
     CLOUD_READ_TIMEOUT_MS,
     `Local read timed out for ${key}.`
   ).catch(() => undefined);
 
-  if (!isSupabaseConfigured) {
+  if (options.skipCloud || !isSupabaseConfigured) {
     return {
       cloudError: null,
       cloudValue: undefined,
@@ -306,15 +466,33 @@ export const readDbSnapshot = async (key) => {
     };
   }
 
+  const hasFreshLocalValue =
+    options.preferLocal &&
+    isArray(localValue) &&
+    Date.now() - getLastCloudReadAt(key) < (options.cacheTtlMs || CLOUD_CACHE_TTL_MS);
+
+  if (hasFreshLocalValue) {
+    return {
+      cloudError: null,
+      cloudValue: undefined,
+      hasCloudAccess: true,
+      localValue
+    };
+  }
+
   try {
     const cloudValue = await withTimeout(
-      readCloudDbValue(key, undefined),
+      readCloudDbValue(key, undefined, options),
       CLOUD_READ_TIMEOUT_MS,
       `Cloud read timed out for ${key}.`
     );
 
+    setLastCloudReadAt(key);
+
     if (cloudValue !== undefined) {
       await writeLocalDbValue(key, cloudValue);
+    } else if (getCloudTable(key)) {
+      await writeLocalDbValue(key, []);
     }
 
     return {
@@ -334,7 +512,7 @@ export const readDbSnapshot = async (key) => {
 };
 
 export const readManyDbSnapshots = async (entries) => {
-  const snapshots = await Promise.all(entries.map(({ key }) => readDbSnapshot(key)));
+  const snapshots = await Promise.all(entries.map(({ key, ...options }) => readDbSnapshot(key, options)));
 
   return entries.reduce((accumulator, entry, index) => {
     accumulator[entry.key] = snapshots[index];

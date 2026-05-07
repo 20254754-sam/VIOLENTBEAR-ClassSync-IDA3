@@ -55,6 +55,8 @@ const formatFileSize = (size = 0) => {
   return `${size || 0} B`;
 };
 
+const getMessageAssetUrl = (asset = {}) => asset.url || asset.dataUrl || '';
+
 const readMessageAttachment = (file) =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -405,16 +407,16 @@ const MessagesPage = ({
     };
   }, [activeImageAttachment]);
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
 
     if (!selectedUser) {
       return;
     }
 
-    const result = onSendDirectMessage(selectedUser.id, draft, {
+    const result = await Promise.resolve(onSendDirectMessage(selectedUser.id, draft, {
       attachments: attachmentDrafts
-    });
+    }));
 
     if (result.success) {
       setDraft('');
@@ -616,12 +618,12 @@ const MessagesPage = ({
     voiceDurationRef.current = 0;
   };
 
-  const handleSendVoiceDraft = () => {
+  const handleSendVoiceDraft = async () => {
     if (!selectedUser || !voiceDraft) {
       return;
     }
 
-    const result = onSendDirectMessage(selectedUser.id, '', { voice: voiceDraft });
+    const result = await Promise.resolve(onSendDirectMessage(selectedUser.id, '', { voice: voiceDraft }));
 
     if (result.success) {
       handleCancelVoiceDraft();
@@ -631,7 +633,9 @@ const MessagesPage = ({
   };
 
   const playVoiceFromProgress = (messageId, voice, progress = 0) => {
-    if (!voice?.dataUrl) {
+    const voiceUrl = getMessageAssetUrl(voice);
+
+    if (!voiceUrl) {
       return;
     }
 
@@ -643,7 +647,7 @@ const MessagesPage = ({
 
     const audio = currentPlayback.messageId === messageId && currentPlayback.audio
       ? currentPlayback.audio
-      : new Audio(voice.dataUrl);
+      : new Audio(voiceUrl);
 
     audio.preload = 'auto';
     audio.onended = () => {
@@ -690,7 +694,7 @@ const MessagesPage = ({
   };
 
   const handleToggleVoicePlayback = (messageId, voice) => {
-    if (!voice?.dataUrl) {
+    if (!getMessageAssetUrl(voice)) {
       return;
     }
 
@@ -864,7 +868,7 @@ const MessagesPage = ({
                                 aria-label={`Open ${attachment.name}`}
                                 onClick={() => setActiveImageAttachment(attachment)}
                               >
-                                <img src={attachment.dataUrl} alt={attachment.name} />
+                                <img src={getMessageAssetUrl(attachment)} alt={attachment.name} />
                               </button>
                               <button
                                 type="button"
@@ -886,7 +890,7 @@ const MessagesPage = ({
                                   <strong>Image details</strong>
                                   <span title={attachment.name}>{attachment.name}</span>
                                   <span>{attachment.type || 'Image'} · {formatFileSize(attachment.size)}</span>
-                                  <a href={attachment.dataUrl} download={attachment.name}>
+                                  <a href={getMessageAssetUrl(attachment)} download={attachment.name}>
                                     Download image
                                   </a>
                                 </div>
@@ -899,7 +903,7 @@ const MessagesPage = ({
                           <a
                             key={attachment.id}
                             className="message-attachment"
-                            href={attachment.dataUrl}
+                            href={getMessageAssetUrl(attachment)}
                             download={attachment.name}
                             target="_blank"
                             rel="noreferrer"
@@ -1040,14 +1044,14 @@ const MessagesPage = ({
             </button>
           </div>
           <img
-            src={activeImageAttachment.dataUrl}
+            src={getMessageAssetUrl(activeImageAttachment)}
             alt={activeImageAttachment.name}
             className="attachment-lightbox-image"
           />
           <div className="attachment-lightbox-footer">
             <small>Press Esc to close</small>
             <a
-              href={activeImageAttachment.dataUrl}
+              href={getMessageAssetUrl(activeImageAttachment)}
               download={activeImageAttachment.name}
               className="attachment-download-button"
             >

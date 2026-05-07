@@ -24,6 +24,8 @@ import {
   readDbValue,
   readManyDbSnapshots,
   subscribeToDbCollection,
+  uploadAttachmentsToStorage,
+  writeDbItem,
   writeDbValue
 } from './lib/classsyncDb';
 import './App.css';
@@ -48,6 +50,81 @@ const DB_KEYS = {
   reports: 'reports',
   rooms: 'rooms',
   users: 'users'
+};
+
+const COLLECTION_STORAGE_KEYS = {
+  [DB_KEYS.notes]: STORAGE_KEYS.notes,
+  [DB_KEYS.forum]: STORAGE_KEYS.forum,
+  [DB_KEYS.messages]: STORAGE_KEYS.messages,
+  [DB_KEYS.notifications]: STORAGE_KEYS.notifications,
+  [DB_KEYS.reports]: STORAGE_KEYS.reports,
+  [DB_KEYS.rooms]: STORAGE_KEYS.rooms,
+  [DB_KEYS.users]: STORAGE_KEYS.users
+};
+
+const COLLECTION_READ_LIMITS = {
+  [DB_KEYS.notes]: 120,
+  [DB_KEYS.forum]: 80,
+  [DB_KEYS.messages]: 200,
+  [DB_KEYS.notifications]: 120,
+  [DB_KEYS.reports]: 120
+};
+
+const getCollectionReadOptions = (key) => ({
+  preferLocal: true,
+  ...(COLLECTION_READ_LIMITS[key] ? { limit: COLLECTION_READ_LIMITS[key] } : {})
+});
+
+const getRouteCloudKeys = (pathname = '/') => {
+  const routePath = pathname || '/';
+  const keys = new Set([DB_KEYS.users, DB_KEYS.rooms]);
+
+  if (routePath.startsWith('/admin')) {
+    keys.add(DB_KEYS.notes);
+    keys.add(DB_KEYS.forum);
+    keys.add(DB_KEYS.messages);
+    keys.add(DB_KEYS.notifications);
+    keys.add(DB_KEYS.reports);
+    return keys;
+  }
+
+  if (routePath.startsWith('/messages')) {
+    keys.add(DB_KEYS.messages);
+    keys.add(DB_KEYS.notifications);
+    return keys;
+  }
+
+  if (routePath.startsWith('/forum')) {
+    keys.add(DB_KEYS.forum);
+    keys.add(DB_KEYS.notifications);
+    return keys;
+  }
+
+  if (routePath.startsWith('/rooms/')) {
+    keys.add(DB_KEYS.notes);
+    keys.add(DB_KEYS.forum);
+    keys.add(DB_KEYS.messages);
+    keys.add(DB_KEYS.notifications);
+    return keys;
+  }
+
+  if (routePath.startsWith('/notifications')) {
+    keys.add(DB_KEYS.notifications);
+    keys.add(DB_KEYS.reports);
+    return keys;
+  }
+
+  if (
+    routePath === '/' ||
+    routePath.startsWith('/browse') ||
+    routePath.startsWith('/note/') ||
+    routePath.startsWith('/profile') ||
+    routePath.startsWith('/upload')
+  ) {
+    keys.add(DB_KEYS.notes);
+  }
+
+  return keys;
 };
 
 const APP_EMAIL_DOMAIN = 'luminote.com';
@@ -799,6 +876,44 @@ const resolveNotificationsState = ({ cloudValue, localDbValue, localStorageValue
 const resolveMessagesState = ({ cloudValue, localDbValue, localStorageValue }) =>
   buildInitialMessages(preferCloudCollection(cloudValue) || mergeCollections(INITIAL_MESSAGES, localStorageValue, localDbValue));
 
+const resolveCollectionState = (key, snapshot = {}, localStorageValues = {}) => {
+  const resolverInput = {
+    cloudValue: snapshot.cloudValue,
+    localDbValue: snapshot.localValue,
+    localStorageValue: localStorageValues[key]
+  };
+
+  if (key === DB_KEYS.users) {
+    return resolveUsersState(resolverInput);
+  }
+
+  if (key === DB_KEYS.notes) {
+    return resolveNotesState(resolverInput);
+  }
+
+  if (key === DB_KEYS.forum) {
+    return resolveForumState(resolverInput);
+  }
+
+  if (key === DB_KEYS.messages) {
+    return resolveMessagesState(resolverInput);
+  }
+
+  if (key === DB_KEYS.notifications) {
+    return resolveNotificationsState(resolverInput);
+  }
+
+  if (key === DB_KEYS.reports) {
+    return resolveReportsState(resolverInput);
+  }
+
+  if (key === DB_KEYS.rooms) {
+    return resolveRoomsState(resolverInput);
+  }
+
+  return [];
+};
+
 const generateRoomCode = (existingRooms) => {
   const existingCodes = new Set(existingRooms.map((room) => room.code));
   let nextCode = '';
@@ -825,6 +940,8 @@ const normalizeLuminoteEmail = (value) => {
 };
 
 function App() {
+  const { pathname } = useLocation();
+  const initialPathnameRef = useRef(pathname);
   const [users, setUsers] = useState(DEMO_USERS);
   const [notes, setNotes] = useState(() => normalizeNotes(INITIAL_NOTES));
   const [forumPosts, setForumPosts] = useState(() => normalizeForumPosts(INITIAL_FORUM_POSTS));
@@ -846,15 +963,6 @@ function App() {
     reports: false,
     rooms: false,
     users: false
-  });
-  const latestCollectionsRef = useRef({
-    forumPosts,
-    messages,
-    notes,
-    notifications,
-    reports,
-    rooms,
-    users
   });
   const [modalState, setModalState] = useState({
     isOpen: false,
@@ -920,24 +1028,35 @@ function App() {
       const localNotifications = readStorage(STORAGE_KEYS.notifications, undefined);
       const localReports = readStorage(STORAGE_KEYS.reports, undefined);
       const localRooms = readStorage(STORAGE_KEYS.rooms, undefined);
+      const localStorageValues = {
+        [DB_KEYS.users]: localUsers,
+        [DB_KEYS.notes]: localNotes,
+        [DB_KEYS.forum]: localForum,
+        [DB_KEYS.messages]: localMessages,
+        [DB_KEYS.notifications]: localNotifications,
+        [DB_KEYS.reports]: localReports,
+        [DB_KEYS.rooms]: localRooms
+      };
+      const activeCloudKeys = getRouteCloudKeys(initialPathnameRef.current);
 
-      const storedSnapshots = await readManyDbSnapshots([
-        { key: DB_KEYS.users },
-        { key: DB_KEYS.notes },
-        { key: DB_KEYS.forum },
-        { key: DB_KEYS.messages },
-        { key: DB_KEYS.notifications },
-        { key: DB_KEYS.reports },
-        { key: DB_KEYS.rooms }
-      ]);
+      const storedSnapshots = await readManyDbSnapshots(
+        Object.values(DB_KEYS).map((key) => ({
+          key,
+          ...getCollectionReadOptions(key),
+          skipCloud: !activeCloudKeys.has(key)
+        }))
+      );
       const snapshotValues = Object.values(storedSnapshots);
-      const hasAnyCloudAccess = snapshotValues.some((snapshot) => snapshot.hasCloudAccess);
+      const activeSnapshotValues = Array.from(activeCloudKeys)
+        .map((key) => storedSnapshots[key])
+        .filter(Boolean);
+      const hasAnyCloudAccess = activeSnapshotValues.some((snapshot) => snapshot.hasCloudAccess);
       const hasAnyLocalData =
         snapshotValues.some((snapshot) => isNonEmptyArray(snapshot.localValue)) ||
         [localUsers, localNotes, localForum, localMessages, localNotifications, localReports, localRooms].some(isNonEmptyArray);
 
       if (isCloudSyncEnabled && !hasAnyCloudAccess && !hasAnyLocalData) {
-        const firstCloudError = snapshotValues.find((snapshot) => snapshot.cloudError)?.cloudError;
+        const firstCloudError = activeSnapshotValues.find((snapshot) => snapshot.cloudError)?.cloudError;
 
         setCloudSyncError(
           firstCloudError?.message ||
@@ -947,41 +1066,17 @@ function App() {
         setCloudSyncError('');
       }
 
-      const nextUsers = resolveUsersState({
-        cloudValue: storedSnapshots[DB_KEYS.users].cloudValue,
-        localDbValue: storedSnapshots[DB_KEYS.users].localValue,
-        localStorageValue: localUsers
-      });
-      const nextNotes = resolveNotesState({
-        cloudValue: storedSnapshots[DB_KEYS.notes].cloudValue,
-        localDbValue: storedSnapshots[DB_KEYS.notes].localValue,
-        localStorageValue: localNotes
-      });
-      const nextForumPosts = resolveForumState({
-        cloudValue: storedSnapshots[DB_KEYS.forum].cloudValue,
-        localDbValue: storedSnapshots[DB_KEYS.forum].localValue,
-        localStorageValue: localForum
-      });
-      const nextMessages = resolveMessagesState({
-        cloudValue: storedSnapshots[DB_KEYS.messages].cloudValue,
-        localDbValue: storedSnapshots[DB_KEYS.messages].localValue,
-        localStorageValue: localMessages
-      });
-      const nextNotifications = resolveNotificationsState({
-        cloudValue: storedSnapshots[DB_KEYS.notifications].cloudValue,
-        localDbValue: storedSnapshots[DB_KEYS.notifications].localValue,
-        localStorageValue: localNotifications
-      });
-      const nextReports = resolveReportsState({
-        cloudValue: storedSnapshots[DB_KEYS.reports].cloudValue,
-        localDbValue: storedSnapshots[DB_KEYS.reports].localValue,
-        localStorageValue: localReports
-      });
-      const nextRooms = resolveRoomsState({
-        cloudValue: storedSnapshots[DB_KEYS.rooms].cloudValue,
-        localDbValue: storedSnapshots[DB_KEYS.rooms].localValue,
-        localStorageValue: localRooms
-      });
+      const nextUsers = resolveCollectionState(DB_KEYS.users, storedSnapshots[DB_KEYS.users], localStorageValues);
+      const nextNotes = resolveCollectionState(DB_KEYS.notes, storedSnapshots[DB_KEYS.notes], localStorageValues);
+      const nextForumPosts = resolveCollectionState(DB_KEYS.forum, storedSnapshots[DB_KEYS.forum], localStorageValues);
+      const nextMessages = resolveCollectionState(DB_KEYS.messages, storedSnapshots[DB_KEYS.messages], localStorageValues);
+      const nextNotifications = resolveCollectionState(
+        DB_KEYS.notifications,
+        storedSnapshots[DB_KEYS.notifications],
+        localStorageValues
+      );
+      const nextReports = resolveCollectionState(DB_KEYS.reports, storedSnapshots[DB_KEYS.reports], localStorageValues);
+      const nextRooms = resolveCollectionState(DB_KEYS.rooms, storedSnapshots[DB_KEYS.rooms], localStorageValues);
       const legacyAdminIds = getLegacyAdminIds(
         localUsers,
         storedSnapshots[DB_KEYS.users].localValue,
@@ -1094,9 +1189,6 @@ function App() {
     }
 
     writeStorage(STORAGE_KEYS.notes, notes);
-    writeDbValue(DB_KEYS.notes, notes).catch(() => {
-      writeStorage(STORAGE_KEYS.notes, notes);
-    });
   }, [isHydrating, notes]);
 
   useEffect(() => {
@@ -1110,9 +1202,6 @@ function App() {
     }
 
     writeStorage(STORAGE_KEYS.users, users);
-    writeDbValue(DB_KEYS.users, users).catch(() => {
-      writeStorage(STORAGE_KEYS.users, users);
-    });
   }, [isHydrating, users]);
 
   useEffect(() => {
@@ -1126,9 +1215,6 @@ function App() {
     }
 
     writeStorage(STORAGE_KEYS.forum, forumPosts);
-    writeDbValue(DB_KEYS.forum, forumPosts).catch(() => {
-      writeStorage(STORAGE_KEYS.forum, forumPosts);
-    });
   }, [isHydrating, forumPosts]);
 
   useEffect(() => {
@@ -1142,9 +1228,6 @@ function App() {
     }
 
     writeStorage(STORAGE_KEYS.messages, messages);
-    writeDbValue(DB_KEYS.messages, messages).catch(() => {
-      writeStorage(STORAGE_KEYS.messages, messages);
-    });
   }, [isHydrating, messages]);
 
   useEffect(() => {
@@ -1158,9 +1241,6 @@ function App() {
     }
 
     writeStorage(STORAGE_KEYS.notifications, notifications);
-    writeDbValue(DB_KEYS.notifications, notifications).catch(() => {
-      writeStorage(STORAGE_KEYS.notifications, notifications);
-    });
   }, [isHydrating, notifications]);
 
   useEffect(() => {
@@ -1174,9 +1254,6 @@ function App() {
     }
 
     writeStorage(STORAGE_KEYS.reports, reports);
-    writeDbValue(DB_KEYS.reports, reports).catch(() => {
-      writeStorage(STORAGE_KEYS.reports, reports);
-    });
   }, [isHydrating, reports]);
 
   useEffect(() => {
@@ -1190,119 +1267,86 @@ function App() {
     }
 
     writeStorage(STORAGE_KEYS.rooms, rooms);
-    writeDbValue(DB_KEYS.rooms, rooms).catch(() => {
-      writeStorage(STORAGE_KEYS.rooms, rooms);
-    });
   }, [isHydrating, rooms]);
 
   useEffect(() => {
-    if (isHydrating || !isCloudSyncEnabled) {
-      return undefined;
-    }
-
-    const unsubscribeHandlers = [
-      subscribeToDbCollection(
-        DB_KEYS.users,
-        applyRealtimeCollectionChange(setUsers, normalizeUserCollection)
-      ),
-      subscribeToDbCollection(
-        DB_KEYS.notes,
-        applyRealtimeCollectionChange(setNotes, normalizeNotes)
-      ),
-      subscribeToDbCollection(
-        DB_KEYS.forum,
-        applyRealtimeCollectionChange(setForumPosts, normalizeForumPosts)
-      ),
-      subscribeToDbCollection(
-        DB_KEYS.messages,
-        applyRealtimeCollectionChange(setMessages, normalizeMessages)
-      ),
-      subscribeToDbCollection(
-        DB_KEYS.notifications,
-        applyRealtimeCollectionChange(setNotifications, normalizeNotifications)
-      ),
-      subscribeToDbCollection(
-        DB_KEYS.reports,
-        applyRealtimeCollectionChange(setReports, normalizeReports)
-      ),
-      subscribeToDbCollection(
-        DB_KEYS.rooms,
-        applyRealtimeCollectionChange(setRooms, normalizeRooms)
-      )
-    ];
-
-    return () => {
-      unsubscribeHandlers.forEach((unsubscribe) => unsubscribe());
-    };
-  }, [isHydrating]);
-
-  useEffect(() => {
-    latestCollectionsRef.current = {
-      forumPosts,
-      messages,
-      notes,
-      notifications,
-      reports,
-      rooms,
-      users
-    };
-  }, [forumPosts, messages, notes, notifications, reports, rooms, users]);
-
-  useEffect(() => {
-    if (isHydrating || !isCloudSyncEnabled) {
+    if (isHydrating) {
       return undefined;
     }
 
     let isActive = true;
+    const routeKeys = Array.from(getRouteCloudKeys(pathname));
 
-    const refreshCollection = async (key, fallbackValue, setCollection, normalizeCollection) => {
-      const latestValue = await readDbValue(key, fallbackValue);
+    const applySnapshot = (key, snapshot) => {
+      const nextValue = resolveCollectionState(key, snapshot, {
+        [key]: readStorage(COLLECTION_STORAGE_KEYS[key], undefined)
+      });
 
-      if (!isActive || !isNonEmptyArray(latestValue)) {
+      if (key === DB_KEYS.users) {
+        setUsers(nextValue);
+      } else if (key === DB_KEYS.notes) {
+        setNotes(nextValue);
+      } else if (key === DB_KEYS.forum) {
+        setForumPosts(nextValue);
+      } else if (key === DB_KEYS.messages) {
+        setMessages(nextValue);
+      } else if (key === DB_KEYS.notifications) {
+        setNotifications(nextValue);
+      } else if (key === DB_KEYS.reports) {
+        setReports(nextValue);
+      } else if (key === DB_KEYS.rooms) {
+        setRooms(nextValue);
+      }
+    };
+
+    const loadRouteCollections = async () => {
+      const snapshots = await readManyDbSnapshots(
+        routeKeys.map((key) => ({
+          key,
+          ...getCollectionReadOptions(key)
+        }))
+      );
+
+      if (!isActive) {
         return;
       }
 
-      setCollection((previousValue) => {
-        const mergedValue =
-          key === DB_KEYS.users ? mergeCollections(previousValue, latestValue) : latestValue;
-        const normalizedValue = normalizeCollection(mergedValue);
-
-        return areCollectionsEqual(previousValue, normalizedValue) ? previousValue : normalizedValue;
-      });
+      routeKeys.forEach((key) => applySnapshot(key, snapshots[key]));
     };
 
-    const refreshCloudCollections = () => {
-      const latestCollections = latestCollectionsRef.current;
-
-      Promise.all([
-        refreshCollection(DB_KEYS.users, latestCollections.users, setUsers, normalizeUserCollection),
-        refreshCollection(DB_KEYS.notes, latestCollections.notes, setNotes, normalizeNotes),
-        refreshCollection(DB_KEYS.forum, latestCollections.forumPosts, setForumPosts, normalizeForumPosts),
-        refreshCollection(DB_KEYS.messages, latestCollections.messages, setMessages, normalizeMessages),
-        refreshCollection(
-          DB_KEYS.notifications,
-          latestCollections.notifications,
-          setNotifications,
-          normalizeNotifications
-        ),
-        refreshCollection(DB_KEYS.reports, latestCollections.reports, setReports, normalizeReports),
-        refreshCollection(DB_KEYS.rooms, latestCollections.rooms, setRooms, normalizeRooms)
-      ]).catch(() => undefined);
-    };
-
-    const refreshTimer = window.setInterval(refreshCloudCollections, 12000);
-
-    window.setTimeout(refreshCloudCollections, 900);
-    window.addEventListener('focus', refreshCloudCollections);
-    window.addEventListener('online', refreshCloudCollections);
+    loadRouteCollections().catch(() => undefined);
 
     return () => {
       isActive = false;
-      window.clearInterval(refreshTimer);
-      window.removeEventListener('focus', refreshCloudCollections);
-      window.removeEventListener('online', refreshCloudCollections);
     };
-  }, [isHydrating]);
+  }, [isHydrating, pathname]);
+
+  useEffect(() => {
+    if (isHydrating || !isCloudSyncEnabled) {
+      return undefined;
+    }
+
+    const subscriptionConfig = {
+      [DB_KEYS.users]: [setUsers, normalizeUserCollection],
+      [DB_KEYS.notes]: [setNotes, normalizeNotes],
+      [DB_KEYS.forum]: [setForumPosts, normalizeForumPosts],
+      [DB_KEYS.messages]: [setMessages, normalizeMessages],
+      [DB_KEYS.notifications]: [setNotifications, normalizeNotifications],
+      [DB_KEYS.reports]: [setReports, normalizeReports],
+      [DB_KEYS.rooms]: [setRooms, normalizeRooms]
+    };
+
+    const unsubscribeHandlers = Array.from(getRouteCloudKeys(pathname)).map((key) => {
+      const [setCollection, normalizeCollection] = subscriptionConfig[key];
+      return (
+        subscribeToDbCollection(key, applyRealtimeCollectionChange(setCollection, normalizeCollection))
+      );
+    });
+
+    return () => {
+      unsubscribeHandlers.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [isHydrating, pathname]);
 
   useEffect(() => {
     if (currentUser) {
@@ -1528,6 +1572,7 @@ function App() {
 
     setUsers((previousUsers) => [...previousUsers, normalizeUserRecord(newUser)]);
     setCurrentUser(buildSessionUser(newUser));
+    writeDbItem(DB_KEYS.users, normalizeUserRecord(newUser)).catch(() => undefined);
 
     return {
       success: true,
@@ -1594,9 +1639,7 @@ function App() {
 
     setUsers(nextUsers);
     writeStorage(STORAGE_KEYS.users, nextUsers);
-    writeDbValue(DB_KEYS.users, nextUsers).catch(() => {
-      writeStorage(STORAGE_KEYS.users, nextUsers);
-    });
+    writeDbItem(DB_KEYS.users, nextUsers.find((user) => user.id === matchedUser.id)).catch(() => undefined);
 
     if (currentUser?.id === matchedUser.id) {
       const nextSessionUser = nextUsers.find((user) => user.id === matchedUser.id);
@@ -1633,9 +1676,7 @@ function App() {
 
     setUsers(nextUsers);
     writeStorage(STORAGE_KEYS.users, nextUsers);
-    writeDbValue(DB_KEYS.users, nextUsers).catch(() => {
-      writeStorage(STORAGE_KEYS.users, nextUsers);
-    });
+    writeDbItem(DB_KEYS.users, nextUser).catch(() => undefined);
     setNotes((previousNotes) =>
       previousNotes.map((note) =>
         note.uploaderId === nextUser.id
@@ -1741,9 +1782,7 @@ function App() {
 
     setUsers(nextUsers);
     writeStorage(STORAGE_KEYS.users, nextUsers);
-    writeDbValue(DB_KEYS.users, nextUsers).catch(() => {
-      writeStorage(STORAGE_KEYS.users, nextUsers);
-    });
+    writeDbItem(DB_KEYS.users, nextUser).catch(() => undefined);
     setCurrentUser(buildSessionUser(nextUser));
 
     return {
@@ -1791,9 +1830,7 @@ function App() {
 
     setUsers(nextUsers);
     writeStorage(STORAGE_KEYS.users, nextUsers);
-    writeDbValue(DB_KEYS.users, nextUsers).catch(() => {
-      writeStorage(STORAGE_KEYS.users, nextUsers);
-    });
+    writeDbItem(DB_KEYS.users, nextUsers.find((user) => user.id === targetUserId)).catch(() => undefined);
 
     return {
       success: true,
@@ -1989,7 +2026,7 @@ function App() {
     setEditingNoteId(null);
   };
 
-  const handleSaveNote = (noteInput, options = {}) => {
+  const handleSaveNote = async (noteInput, options = {}) => {
     if (!currentUser) {
       return {
         success: false,
@@ -2000,27 +2037,46 @@ function App() {
     const now = new Date().toISOString();
     const nextStatus = options.roomId ? 'approved' : currentUser.role === 'admin' ? 'approved' : 'pending';
     const nextVisibility = options.roomId ? 'room' : 'public';
+    const noteId = editingNoteId || Date.now();
+    let uploadedAttachments = [];
+
+    try {
+      uploadedAttachments = await uploadAttachmentsToStorage(noteInput.attachments || [], {
+        collection: 'notes',
+        itemId: noteId,
+        ownerId: currentUser.id
+      });
+    } catch {
+      return {
+        success: false,
+        message: 'The attachments could not be uploaded. Run the Supabase setup SQL, then try again.'
+      };
+    }
 
     if (editingNoteId) {
+      let updatedNote = null;
       setNotes((previousNotes) =>
         previousNotes.map((note) =>
           note.id === editingNoteId
-            ? {
+            ? (updatedNote = {
                 ...note,
                 ...noteInput,
                 status: nextStatus,
                 roomId: options.roomId ?? note.roomId ?? null,
                 visibility: options.roomId ? 'room' : note.visibility || nextVisibility,
-                attachments: noteInput.attachments || [],
+                attachments: uploadedAttachments,
                 rejectionReason: null,
                 rejectionByName: null,
                 updatedAt: now
-              }
+              })
             : note
         )
       );
 
       setEditingNoteId(null);
+      if (updatedNote) {
+        writeDbItem(DB_KEYS.notes, updatedNote).catch(() => undefined);
+      }
 
       return {
         success: true,
@@ -2034,14 +2090,14 @@ function App() {
     }
 
     const newNote = {
-      id: Date.now(),
+      id: noteId,
       ...noteInput,
       uploaderId: currentUser.id,
       uploaderName: currentUser.name,
       status: nextStatus,
       roomId: options.roomId || null,
       visibility: nextVisibility,
-      attachments: noteInput.attachments || [],
+      attachments: uploadedAttachments,
       rejectionReason: null,
       rejectionByName: null,
       createdAt: now,
@@ -2051,6 +2107,7 @@ function App() {
     };
 
     setNotes((previousNotes) => [newNote, ...previousNotes]);
+    writeDbItem(DB_KEYS.notes, newNote).catch(() => undefined);
 
     return {
       success: true,
@@ -2100,22 +2157,22 @@ function App() {
 
     const targetNote = notes.find((note) => note.id === noteId);
 
-    setNotes((previousNotes) =>
-      previousNotes.map((note) => {
-        if (note.id !== noteId) {
-          return note;
-        }
+    if (!targetNote) {
+      return;
+    }
 
-        const alreadyLiked = note.likes.includes(currentUser.id);
+    const alreadyLiked = targetNote.likes.includes(currentUser.id);
+    const updatedNote = {
+      ...targetNote,
+      likes: alreadyLiked
+        ? targetNote.likes.filter((userId) => userId !== currentUser.id)
+        : [...targetNote.likes, currentUser.id]
+    };
 
-        return {
-          ...note,
-          likes: alreadyLiked
-            ? note.likes.filter((userId) => userId !== currentUser.id)
-            : [...note.likes, currentUser.id]
-          };
-      })
-    );
+    setNotes((previousNotes) => previousNotes.map((note) => (note.id === noteId ? updatedNote : note)));
+    if (updatedNote) {
+      writeDbItem(DB_KEYS.notes, updatedNote).catch(() => undefined);
+    }
 
     if (targetNote && targetNote.uploaderId !== currentUser.id && !targetNote.likes.includes(currentUser.id)) {
       createNotification({
@@ -2134,6 +2191,11 @@ function App() {
     }
 
     const reviewedNote = notes.find((note) => note.id === noteId);
+
+    if (!reviewedNote) {
+      return;
+    }
+
     const reviewPayload = {
       id: Date.now(),
       userId: currentUser.id,
@@ -2142,25 +2204,18 @@ function App() {
       text: reviewInput.text,
       createdAt: new Date().toISOString()
     };
+    const existingReview = reviewedNote.reviews.find((review) => review.userId === currentUser.id);
+    const updatedNote = {
+      ...reviewedNote,
+      reviews: existingReview
+        ? reviewedNote.reviews.map((review) =>
+            review.userId === currentUser.id ? { ...review, ...reviewPayload, id: review.id } : review
+          )
+        : [reviewPayload, ...reviewedNote.reviews]
+    };
 
-    setNotes((previousNotes) =>
-      previousNotes.map((note) => {
-        if (note.id !== noteId) {
-          return note;
-        }
-
-        const existingReview = note.reviews.find((review) => review.userId === currentUser.id);
-
-        return {
-          ...note,
-          reviews: existingReview
-            ? note.reviews.map((review) =>
-                review.userId === currentUser.id ? { ...review, ...reviewPayload, id: review.id } : review
-              )
-            : [reviewPayload, ...note.reviews]
-        };
-      })
-    );
+    setNotes((previousNotes) => previousNotes.map((note) => (note.id === noteId ? updatedNote : note)));
+    writeDbItem(DB_KEYS.notes, updatedNote).catch(() => undefined);
 
     if (reviewedNote && reviewedNote.uploaderId !== currentUser.id) {
       createNotification({
@@ -2175,22 +2230,23 @@ function App() {
 
   const handleApproveNote = (noteId) => {
     const approvedNote = notes.find((note) => note.id === noteId);
-    const approvedAt = new Date().toISOString();
 
-    setNotes((previousNotes) =>
-      previousNotes.map((note) =>
-        note.id === noteId
-          ? {
-              ...note,
-              status: 'approved',
-              approvedAt,
-              rejectionReason: null,
-              rejectionByName: null,
-              updatedAt: approvedAt
-            }
-          : note
-      )
-    );
+    if (!approvedNote) {
+      return;
+    }
+
+    const approvedAt = new Date().toISOString();
+    const updatedNote = {
+      ...approvedNote,
+      status: 'approved',
+      approvedAt,
+      rejectionReason: null,
+      rejectionByName: null,
+      updatedAt: approvedAt
+    };
+
+    setNotes((previousNotes) => previousNotes.map((note) => (note.id === noteId ? updatedNote : note)));
+    writeDbItem(DB_KEYS.notes, updatedNote).catch(() => undefined);
 
     if (approvedNote && approvedNote.uploaderId !== currentUser?.id) {
       createNotification({
@@ -2206,19 +2262,20 @@ function App() {
   const handleRejectNote = (noteId, rejectionReason) => {
     const rejectedNote = notes.find((note) => note.id === noteId);
 
-    setNotes((previousNotes) =>
-      previousNotes.map((note) =>
-        note.id === noteId
-          ? {
-              ...note,
-              status: 'rejected',
-              rejectionReason,
-              rejectionByName: currentUser?.name || 'Admin',
-              updatedAt: new Date().toISOString()
-            }
-          : note
-      )
-    );
+    if (!rejectedNote) {
+      return;
+    }
+
+    const updatedNote = {
+      ...rejectedNote,
+      status: 'rejected',
+      rejectionReason,
+      rejectionByName: currentUser?.name || 'Admin',
+      updatedAt: new Date().toISOString()
+    };
+
+    setNotes((previousNotes) => previousNotes.map((note) => (note.id === noteId ? updatedNote : note)));
+    writeDbItem(DB_KEYS.notes, updatedNote).catch(() => undefined);
 
     if (rejectedNote && rejectedNote.uploaderId !== currentUser?.id) {
       createNotification({
@@ -2287,9 +2344,44 @@ function App() {
     };
 
     setNotifications((previousNotifications) => [nextNotification, ...previousNotifications]);
+    writeDbItem(DB_KEYS.notifications, nextNotification).catch(() => undefined);
   };
 
-  const handleSendDirectMessage = (targetUserId, text, options = {}) => {
+  const uploadVoiceDraftToStorage = async (voice, messageId) => {
+    if (!voice?.dataUrl || !isCloudSyncEnabled) {
+      return voice || null;
+    }
+
+    const [uploadedVoice] = await uploadAttachmentsToStorage(
+      [
+        {
+          id: `voice-${messageId}`,
+          name: `voice-${messageId}.webm`,
+          type: voice.mimeType || 'audio/webm',
+          size: voice.size || 0,
+          dataUrl: voice.dataUrl,
+          isImage: false,
+          attachedAt: new Date().toISOString()
+        }
+      ],
+      {
+        collection: 'message-voices',
+        itemId: messageId,
+        ownerId: currentUser?.id || 'anonymous'
+      }
+    );
+    const voiceMetadata = { ...voice };
+    delete voiceMetadata.dataUrl;
+
+    return {
+      ...voiceMetadata,
+      url: uploadedVoice.url,
+      storagePath: uploadedVoice.storagePath,
+      bucket: uploadedVoice.bucket
+    };
+  };
+
+  const handleSendDirectMessage = async (targetUserId, text, options = {}) => {
     if (!currentUser) {
       return {
         success: false,
@@ -2312,8 +2404,26 @@ function App() {
     const now = new Date().toISOString();
     const participants = [currentUser.id, targetUser.id].sort();
     const conversationKey = `direct:${participants.join(':')}`;
+    const messageId = `message-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    let uploadedAttachments = [];
+    let uploadedVoice = voice;
+
+    try {
+      uploadedAttachments = await uploadAttachmentsToStorage(attachments, {
+        collection: 'message-attachments',
+        itemId: messageId,
+        ownerId: currentUser.id
+      });
+      uploadedVoice = await uploadVoiceDraftToStorage(voice, messageId);
+    } catch {
+      return {
+        success: false,
+        message: 'The message attachment could not be uploaded. Run the Supabase setup SQL, then try again.'
+      };
+    }
+
     const nextMessage = {
-      id: `message-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: messageId,
       type: 'direct',
       roomId: null,
       participants,
@@ -2321,8 +2431,8 @@ function App() {
       senderId: currentUser.id,
       senderName: currentUser.name,
       text: trimmedText,
-      voice,
-      attachments,
+      voice: uploadedVoice,
+      attachments: uploadedAttachments,
       createdAt: now,
       updatedAt: now,
       readBy: [currentUser.id],
@@ -2330,6 +2440,7 @@ function App() {
     };
 
     setMessages((previousMessages) => [nextMessage, ...previousMessages]);
+    writeDbItem(DB_KEYS.messages, nextMessage).catch(() => undefined);
 
     const attachmentPreview =
       attachments.length > 0
@@ -2392,6 +2503,7 @@ function App() {
     };
 
     setMessages((previousMessages) => [nextMessage, ...previousMessages]);
+    writeDbItem(DB_KEYS.messages, nextMessage).catch(() => undefined);
 
     mentions
       .filter((mention) => mention.id !== currentUser.id && room.memberIds.includes(mention.id))
@@ -2416,6 +2528,7 @@ function App() {
       return;
     }
 
+    const updatedMessages = [];
     setMessages((previousMessages) => {
       let hasChanged = false;
 
@@ -2428,15 +2541,19 @@ function App() {
 
         hasChanged = true;
 
-        return {
+        const updatedMessage = {
           ...message,
           readBy: [...readBy, currentUser.id],
           updatedAt: new Date().toISOString()
         };
+        updatedMessages.push(updatedMessage);
+
+        return updatedMessage;
       });
 
       return hasChanged ? nextMessages : previousMessages;
     });
+    Promise.all(updatedMessages.map((message) => writeDbItem(DB_KEYS.messages, message).catch(() => undefined)));
   };
 
   const handleDeleteDirectConversation = (conversationKey) => {
@@ -2449,6 +2566,7 @@ function App() {
 
     const now = new Date().toISOString();
 
+    const updatedMessages = [];
     setMessages((previousMessages) =>
       previousMessages.map((message) => {
         if (
@@ -2463,7 +2581,7 @@ function App() {
           return message;
         }
 
-        return {
+        const updatedMessage = {
           ...message,
           deletedFor: [...(message.deletedFor || []), currentUser.id],
           readBy: (message.readBy || []).includes(currentUser.id)
@@ -2471,8 +2589,12 @@ function App() {
             : [...(message.readBy || []), currentUser.id],
           updatedAt: now
         };
+        updatedMessages.push(updatedMessage);
+
+        return updatedMessage;
       })
     );
+    Promise.all(updatedMessages.map((message) => writeDbItem(DB_KEYS.messages, message).catch(() => undefined)));
 
     return {
       success: true,
@@ -2537,6 +2659,11 @@ function App() {
     }));
 
     setNotifications((previousNotifications) => [...announcementNotifications, ...previousNotifications]);
+    Promise.all(
+      announcementNotifications.map((notification) =>
+        writeDbItem(DB_KEYS.notifications, notification).catch(() => undefined)
+      )
+    );
 
     return {
       success: true,
@@ -2545,27 +2672,44 @@ function App() {
   };
 
   const handleMarkNotificationRead = (notificationId) => {
+    let updatedNotification = null;
     setNotifications((previousNotifications) =>
       previousNotifications.map((notification) =>
         notification.id === notificationId && !notification.readAt
-          ? {
+          ? (updatedNotification = {
               ...notification,
               readAt: new Date().toISOString()
-            }
+            })
           : notification
       )
     );
+    if (updatedNotification) {
+      writeDbItem(DB_KEYS.notifications, updatedNotification).catch(() => undefined);
+    }
   };
 
   const handleMarkAllNotificationsRead = () => {
+    const updatedNotifications = [];
+    const readAt = new Date().toISOString();
+
     setNotifications((previousNotifications) =>
-      previousNotifications.map((notification) =>
-        notification.targetUserId === currentUser?.id && !notification.readAt
-          ? {
-              ...notification,
-              readAt: new Date().toISOString()
-            }
-          : notification
+      previousNotifications.map((notification) => {
+        if (notification.targetUserId !== currentUser?.id || notification.readAt) {
+          return notification;
+        }
+
+        const updatedNotification = {
+          ...notification,
+          readAt
+        };
+
+        updatedNotifications.push(updatedNotification);
+        return updatedNotification;
+      })
+    );
+    Promise.all(
+      updatedNotifications.map((notification) =>
+        writeDbItem(DB_KEYS.notifications, notification).catch(() => undefined)
       )
     );
   };
@@ -2589,6 +2733,7 @@ function App() {
     };
 
     setReports((previousReports) => [nextReport, ...previousReports]);
+    writeDbItem(DB_KEYS.reports, nextReport).catch(() => undefined);
   };
 
   const requestReportItem = ({ targetId, targetType, targetTitle, roomId = null }) => {
@@ -2618,18 +2763,22 @@ function App() {
   };
 
   const handleResolveReport = (reportId) => {
+    let updatedReport = null;
     setReports((previousReports) =>
       previousReports.map((report) =>
         report.id === reportId
-          ? {
+          ? (updatedReport = {
               ...report,
               status: 'resolved',
               resolvedAt: new Date().toISOString(),
               resolvedByName: currentUser?.name || 'Admin'
-            }
+            })
           : report
       )
     );
+    if (updatedReport) {
+      writeDbItem(DB_KEYS.reports, updatedReport).catch(() => undefined);
+    }
   };
 
   const handleCreateForumPost = (postInput, options = {}) => {
@@ -2652,6 +2801,7 @@ function App() {
     };
 
     setForumPosts((previousPosts) => [newPost, ...previousPosts]);
+    writeDbItem(DB_KEYS.forum, newPost).catch(() => undefined);
   };
 
   const handleDeleteForumPost = (postId) => {
@@ -2739,6 +2889,7 @@ function App() {
       return;
     }
 
+    let updatedPost = null;
     setForumPosts((previousPosts) =>
       normalizeForumPosts(previousPosts).map((post) => {
         if (post.id !== postId) {
@@ -2753,42 +2904,53 @@ function App() {
         if (direction === 'up') {
           if (hasUpvoted) {
             upvoteSet.delete(currentUser.id);
-            return {
+            updatedPost = {
               ...post,
               upvotes: [...upvoteSet],
               downvotes: [...downvoteSet]
             };
+
+            return updatedPost;
           }
 
           downvoteSet.delete(currentUser.id);
           upvoteSet.add(currentUser.id);
 
-          return {
+          updatedPost = {
             ...post,
             upvotes: [...upvoteSet],
             downvotes: [...downvoteSet]
           };
+
+          return updatedPost;
         }
 
         if (hasDownvoted) {
           downvoteSet.delete(currentUser.id);
-          return {
+          updatedPost = {
             ...post,
             upvotes: [...upvoteSet],
             downvotes: [...downvoteSet]
           };
+
+          return updatedPost;
         }
 
         upvoteSet.delete(currentUser.id);
         downvoteSet.add(currentUser.id);
 
-        return {
+        updatedPost = {
           ...post,
           upvotes: [...upvoteSet],
           downvotes: [...downvoteSet]
         };
+
+        return updatedPost;
       })
     );
+    if (updatedPost) {
+      writeDbItem(DB_KEYS.forum, updatedPost).catch(() => undefined);
+    }
   };
 
   const handleCommentOnPost = (postId, commentText, options = {}) => {
@@ -2797,6 +2959,7 @@ function App() {
     }
 
     const commentedPost = forumPosts.find((post) => post.id === postId);
+    let updatedPost = null;
     const mentions = Array.isArray(options.mentions) ? options.mentions : [];
     const newComment = {
       id: `comment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -2810,9 +2973,12 @@ function App() {
 
     setForumPosts((previousPosts) =>
       previousPosts.map((post) =>
-        post.id === postId ? { ...post, comments: [...(post.comments || []), newComment] } : post
+        post.id === postId ? (updatedPost = { ...post, comments: [...(post.comments || []), newComment] }) : post
       )
     );
+    if (updatedPost) {
+      writeDbItem(DB_KEYS.forum, updatedPost).catch(() => undefined);
+    }
 
     if (commentedPost && commentedPost.authorId !== currentUser.id) {
       createNotification({
@@ -2873,7 +3039,7 @@ function App() {
 
     const nextRooms = [nextRoom, ...latestRooms];
     setRooms(nextRooms);
-    await writeDbValue(DB_KEYS.rooms, nextRooms);
+    await writeDbItem(DB_KEYS.rooms, nextRoom);
 
     return {
       success: true,
@@ -2925,7 +3091,7 @@ function App() {
 
     const nextRooms = latestRooms.map((room) => (room.id === matchedRoom.id ? updatedRoom : room));
     setRooms(nextRooms);
-    await writeDbValue(DB_KEYS.rooms, nextRooms);
+    await writeDbItem(DB_KEYS.rooms, updatedRoom);
 
     return {
       success: true,
@@ -2948,9 +3114,7 @@ function App() {
 
     setRooms(nextRooms);
     writeStorage(STORAGE_KEYS.rooms, nextRooms);
-    writeDbValue(DB_KEYS.rooms, nextRooms).catch(() => {
-      writeStorage(STORAGE_KEYS.rooms, nextRooms);
-    });
+    writeDbItem(DB_KEYS.rooms, nextRooms.find((room) => room.id === roomId)).catch(() => undefined);
   };
 
   const handleKickRoomMember = (roomId, memberId) => {
@@ -2969,9 +3133,7 @@ function App() {
 
     setRooms(nextRooms);
     writeStorage(STORAGE_KEYS.rooms, nextRooms);
-    writeDbValue(DB_KEYS.rooms, nextRooms).catch(() => {
-      writeStorage(STORAGE_KEYS.rooms, nextRooms);
-    });
+    writeDbItem(DB_KEYS.rooms, nextRooms.find((room) => room.id === roomId)).catch(() => undefined);
   };
 
   const sortedForumPosts = useMemo(

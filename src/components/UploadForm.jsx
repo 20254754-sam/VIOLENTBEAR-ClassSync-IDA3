@@ -181,27 +181,39 @@ const UploadForm = ({ onSubmit, editingNote, onCancelEdit }) => {
 
     setIsSaving(true);
 
-    const result = onSubmit({
-      title: form.title.trim(),
-      subject: finalSubject,
-      content: form.content.trim(),
-      isOwnWork: form.isOwnWork === 'yes',
-      attachments: form.attachments,
-      source:
-        form.isOwnWork === 'no'
-          ? {
-              type: form.sourceType,
-              title: form.sourceTitle.trim(),
-              author: form.sourceAuthor.trim(),
-              link: form.sourceLink.trim(),
-              year: form.sourceYear.trim()
-            }
-          : null
-    });
+    let result;
 
-    setIsSaving(false);
+    try {
+      result = await Promise.resolve(
+        onSubmit({
+          title: form.title.trim(),
+          subject: finalSubject,
+          content: form.content.trim(),
+          isOwnWork: form.isOwnWork === 'yes',
+          attachments: form.attachments,
+          source:
+            form.isOwnWork === 'no'
+              ? {
+                  type: form.sourceType,
+                  title: form.sourceTitle.trim(),
+                  author: form.sourceAuthor.trim(),
+                  link: form.sourceLink.trim(),
+                  year: form.sourceYear.trim()
+                }
+              : null
+        })
+      );
+    } catch {
+      result = {
+        success: false,
+        message: 'The attachments could not be uploaded. Please run the Supabase setup SQL and try again.'
+      };
+    } finally {
+      setIsSaving(false);
+    }
 
     if (!result.success) {
+      setErrors((currentErrors) => ({ ...currentErrors, attachments: result.message }));
       return;
     }
 

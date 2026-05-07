@@ -1,5 +1,37 @@
 create extension if not exists pgcrypto;
 
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('luminote-attachments', 'luminote-attachments', true, 10485760)
+on conflict (id) do update
+set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit;
+
+drop policy if exists "Luminote attachments are publicly readable" on storage.objects;
+create policy "Luminote attachments are publicly readable"
+on storage.objects
+for select
+using (bucket_id = 'luminote-attachments');
+
+drop policy if exists "Luminote attachments can be uploaded by everyone" on storage.objects;
+create policy "Luminote attachments can be uploaded by everyone"
+on storage.objects
+for insert
+with check (bucket_id = 'luminote-attachments');
+
+drop policy if exists "Luminote attachments can be updated by everyone" on storage.objects;
+create policy "Luminote attachments can be updated by everyone"
+on storage.objects
+for update
+using (bucket_id = 'luminote-attachments')
+with check (bucket_id = 'luminote-attachments');
+
+drop policy if exists "Luminote attachments can be deleted by everyone" on storage.objects;
+create policy "Luminote attachments can be deleted by everyone"
+on storage.objects
+for delete
+using (bucket_id = 'luminote-attachments');
+
 create table if not exists public.app_state (
   key text primary key,
   value jsonb not null,
@@ -461,3 +493,17 @@ begin
     end if;
   end loop;
 end $$;
+
+create table if not exists public.luminote_notes_backup_before_storage
+(like public.luminote_notes including all);
+
+create table if not exists public.luminote_messages_backup_before_storage
+(like public.luminote_messages including all);
+
+insert into public.luminote_notes_backup_before_storage
+select * from public.luminote_notes
+on conflict (id) do nothing;
+
+insert into public.luminote_messages_backup_before_storage
+select * from public.luminote_messages
+on conflict (id) do nothing;
