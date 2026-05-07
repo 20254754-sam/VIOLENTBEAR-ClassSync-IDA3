@@ -140,7 +140,7 @@ const RoomDetailsPage = ({
     return (
       <div className="page">
         <h1>Room not found</h1>
-        <p>The invite link may be invalid or the room may have been removed from ClassSync.</p>
+        <p>The invite link may be invalid or the room may have been removed from Luminote.</p>
         <Link to="/rooms" className="inline-link">Back to rooms</Link>
       </div>
     );
@@ -493,10 +493,12 @@ const RoomDetailsPage = ({
                               type="button"
                               className="forum-delete-button"
                               onClick={() => {
-                                const shouldDelete = window.confirm(`Delete "${post.title}" from this room forum?`);
+                                const result = onDeletePost(post.id, {
+                                  context: 'room',
+                                  onComplete: (actionResult) => setFeedback(actionResult.message)
+                                });
 
-                                if (shouldDelete) {
-                                  const result = onDeletePost(post.id);
+                                if (result?.message) {
                                   setFeedback(result.message);
                                 }
                               }}

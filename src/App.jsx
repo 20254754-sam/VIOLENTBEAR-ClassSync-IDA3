@@ -50,8 +50,11 @@ const DB_KEYS = {
   users: 'users'
 };
 
-const CANONICAL_ADMIN_EMAIL = 'admin@classsync.com';
+const APP_EMAIL_DOMAIN = 'luminote.com';
+const CANONICAL_ADMIN_EMAIL = `admin@${APP_EMAIL_DOMAIN}`;
+const LEGACY_CANONICAL_ADMIN_EMAIL = 'admin@classsync.com';
 const LEGACY_ADMIN_EMAIL = 'admin@classsync.demo';
+const LEGACY_CLASS_SYNC_EMAIL_DOMAIN = '@classsync.com';
 const LEGACY_DEMO_EMAIL_DOMAIN = '@classsync.demo';
 
 const ScrollToTop = () => {
@@ -68,7 +71,7 @@ const DEMO_USERS = [
   {
     id: 'student-1',
     name: 'Sample Student',
-    email: 'student@classsync.com',
+    email: `student@${APP_EMAIL_DOMAIN}`,
     password: 'student123',
     role: 'student',
     bio: 'BSIT student who shares concise reviewers and practical study notes.',
@@ -82,8 +85,8 @@ const DEMO_USERS = [
   },
   {
     id: 'admin-1',
-    name: 'ClassSync Admin',
-    email: 'admin@classsync.com',
+    name: 'Luminote Admin',
+    email: CANONICAL_ADMIN_EMAIL,
     password: 'admin123',
     role: 'admin',
     bio: 'Reviews submitted notes before they become visible to the whole community.',
@@ -180,7 +183,7 @@ const INITIAL_NOTES = [
     isOwnWork: true,
     source: null,
     uploaderId: 'admin-1',
-    uploaderName: 'ClassSync Admin',
+    uploaderName: 'Luminote Admin',
     status: 'approved',
     rejectionReason: null,
     rejectionByName: null,
@@ -204,7 +207,7 @@ const INITIAL_NOTES = [
       year: '2024'
     },
     uploaderId: 'admin-1',
-    uploaderName: 'ClassSync Admin',
+    uploaderName: 'Luminote Admin',
     status: 'approved',
     rejectionReason: null,
     rejectionByName: null,
@@ -228,7 +231,7 @@ const INITIAL_NOTES = [
       year: '2026'
     },
     uploaderId: 'admin-1',
-    uploaderName: 'ClassSync Admin',
+    uploaderName: 'Luminote Admin',
     status: 'approved',
     rejectionReason: null,
     rejectionByName: null,
@@ -252,7 +255,7 @@ const INITIAL_NOTES = [
       year: '2026'
     },
     uploaderId: 'admin-1',
-    uploaderName: 'ClassSync Admin',
+    uploaderName: 'Luminote Admin',
     status: 'approved',
     rejectionReason: null,
     rejectionByName: null,
@@ -276,7 +279,7 @@ const INITIAL_NOTES = [
       year: '2026'
     },
     uploaderId: 'admin-1',
-    uploaderName: 'ClassSync Admin',
+    uploaderName: 'Luminote Admin',
     status: 'approved',
     rejectionReason: null,
     rejectionByName: null,
@@ -300,7 +303,7 @@ const INITIAL_NOTES = [
       year: '2026'
     },
     uploaderId: 'admin-1',
-    uploaderName: 'ClassSync Admin',
+    uploaderName: 'Luminote Admin',
     status: 'approved',
     rejectionReason: null,
     rejectionByName: null,
@@ -324,7 +327,7 @@ const INITIAL_NOTES = [
       year: '2026'
     },
     uploaderId: 'admin-1',
-    uploaderName: 'ClassSync Admin',
+    uploaderName: 'Luminote Admin',
     status: 'approved',
     rejectionReason: null,
     rejectionByName: null,
@@ -378,7 +381,7 @@ const INITIAL_ROOMS = [
     subject: 'Web Development',
     description: 'A simple study room for web development notes, reminders, and quick reviewer sharing.',
     ownerId: 'admin-1',
-    ownerName: 'ClassSync Admin',
+    ownerName: 'Luminote Admin',
     createdAt: '2026-04-20T08:45:00.000Z',
     adminIds: ['admin-1'],
     memberIds: ['admin-1', 'student-1']
@@ -426,12 +429,12 @@ const escapeSvgText = (value) =>
     .replace(/'/g, '&#39;');
 
 const buildDefaultProfilePicture = (name, role = 'student') => {
-  const label = (name || 'ClassSync')
+  const label = (name || 'Luminote')
     .split(' ')
     .filter(Boolean)
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() || '')
-    .join('') || 'CS';
+    .join('') || 'LN';
   const palette =
     role === 'admin'
       ? { background: '#1d4ed8', accent: '#dbeafe', text: '#f8fbff' }
@@ -512,6 +515,8 @@ const areCollectionsEqual = (firstItems, secondItems) =>
 const removeCollectionItem = (items, itemId) =>
   (items || []).filter((item) => String(item?.id) !== String(itemId));
 
+const normalizeLegacyDisplayName = (value) => (value === 'ClassSync Admin' ? 'Luminote Admin' : value);
+
 const getRealtimePayloadItem = (change) => change?.new?.payload || change?.old?.payload || null;
 
 const applyRealtimeCollectionChange = (setCollection, normalizeCollection) => (change) => {
@@ -571,6 +576,8 @@ const normalizeForumPosts = (posts) =>
 const normalizeNotes = (notes) =>
   (notes || []).map((note) => ({
     ...note,
+    uploaderName: normalizeLegacyDisplayName(note.uploaderName),
+    rejectionByName: normalizeLegacyDisplayName(note.rejectionByName),
     approvedAt: note.approvedAt || (note.status === 'approved' ? note.updatedAt || note.createdAt : null),
     roomId: note.roomId || null,
     visibility: note.visibility || (note.roomId ? 'room' : 'public'),
@@ -585,6 +592,7 @@ const normalizeNotes = (notes) =>
 const normalizeRooms = (rooms) =>
   (rooms || []).map((room) => ({
     ...room,
+    ownerName: normalizeLegacyDisplayName(room.ownerName),
     adminIds: [...new Set(room.adminIds || [room.ownerId].filter(Boolean))],
     memberIds: [...new Set(room.memberIds || [])]
   }));
@@ -624,13 +632,28 @@ const normalizeMessages = (messages) =>
     updatedAt: message.updatedAt || message.createdAt || new Date().toISOString()
   }));
 
+const normalizeLuminoteEmailAddress = (value = '') => {
+  const normalizedValue = value.trim().toLowerCase();
+
+  if (!normalizedValue) {
+    return '';
+  }
+
+  if (normalizedValue === LEGACY_ADMIN_EMAIL || normalizedValue === LEGACY_CANONICAL_ADMIN_EMAIL) {
+    return CANONICAL_ADMIN_EMAIL;
+  }
+
+  if (normalizedValue.endsWith(LEGACY_CLASS_SYNC_EMAIL_DOMAIN)) {
+    return `${normalizedValue.slice(0, -LEGACY_CLASS_SYNC_EMAIL_DOMAIN.length)}@${APP_EMAIL_DOMAIN}`;
+  }
+
+  return normalizedValue;
+};
+
 const normalizeUserRecord = (user) => {
-  const normalizedName = user?.name?.trim() || 'ClassSync User';
+  const normalizedName = normalizeLegacyDisplayName(user?.name?.trim()) || 'Luminote User';
   const normalizedRole = user?.role || 'student';
-  const normalizedEmail =
-    user?.email?.trim()?.toLowerCase() === LEGACY_ADMIN_EMAIL
-      ? CANONICAL_ADMIN_EMAIL
-      : user?.email?.trim()?.toLowerCase() || '';
+  const normalizedEmail = normalizeLuminoteEmailAddress(user?.email || '');
 
   return {
     ...user,
@@ -640,8 +663,8 @@ const normalizeUserRecord = (user) => {
     bio:
       user?.bio?.trim() ||
       (normalizedRole === 'admin'
-        ? 'Keeps the ClassSync space organized for everyone.'
-        : 'ClassSync member who shares notes and learns with classmates.'),
+        ? 'Keeps the Luminote space organized for everyone.'
+        : 'Luminote member who shares notes and learns with classmates.'),
     course: user?.course?.trim() || '',
     yearLevel: user?.yearLevel?.trim() || '',
     profileVisibility: PROFILE_VISIBILITY_OPTIONS.includes(user?.profileVisibility) ? user.profileVisibility : 'public',
@@ -685,7 +708,10 @@ const getLegacyAdminIds = (...collections) =>
     ...new Set(
       collections
         .flatMap((collection) => (Array.isArray(collection) ? collection : []))
-        .filter((user) => user?.email?.trim()?.toLowerCase() === LEGACY_ADMIN_EMAIL)
+        .filter((user) => {
+          const email = user?.email?.trim()?.toLowerCase();
+          return email === LEGACY_ADMIN_EMAIL || email === LEGACY_CANONICAL_ADMIN_EMAIL;
+        })
         .map((user) => String(user.id || ''))
         .filter((id) => id && id !== 'admin-1')
     )
@@ -784,7 +810,7 @@ const generateRoomCode = (existingRooms) => {
   return nextCode;
 };
 
-const normalizeClassSyncEmail = (value) => {
+const normalizeLuminoteEmail = (value) => {
   const trimmedValue = value.trim().toLowerCase();
 
   if (!trimmedValue) {
@@ -792,10 +818,10 @@ const normalizeClassSyncEmail = (value) => {
   }
 
   if (!trimmedValue.includes('@')) {
-    return `${trimmedValue}@classsync.com`;
+    return `${trimmedValue}@${APP_EMAIL_DOMAIN}`;
   }
 
-  return trimmedValue;
+  return normalizeLuminoteEmailAddress(trimmedValue);
 };
 
 function App() {
@@ -915,7 +941,7 @@ function App() {
 
         setCloudSyncError(
           firstCloudError?.message ||
-            'ClassSync could not read the Supabase tables. Run supabase/classsync-schema.sql in the correct Supabase project.'
+            'Luminote could not read the Supabase tables. Run supabase/luminote-schema.sql in the correct Supabase project.'
         );
       } else {
         setCloudSyncError('');
@@ -1427,7 +1453,7 @@ function App() {
   };
 
   const handleLogin = ({ email, password }) => {
-    const normalizedEmail = normalizeClassSyncEmail(email);
+    const normalizedEmail = normalizeLuminoteEmail(email);
     const matchedUser = users.find(
       (user) => user.email.toLowerCase() === normalizedEmail && user.password === password
     );
@@ -1454,7 +1480,7 @@ function App() {
   };
 
   const handleRegister = ({ name, email, password, additionalInfo = {}, securityQuestion, securityAnswer }) => {
-    const normalizedEmail = normalizeClassSyncEmail(email);
+    const normalizedEmail = normalizeLuminoteEmail(email);
 
     if (!name.trim() || !normalizedEmail || !password.trim()) {
       return {
@@ -1463,10 +1489,10 @@ function App() {
       };
     }
 
-    if (!normalizedEmail.endsWith('@classsync.com')) {
+    if (!normalizedEmail.endsWith(`@${APP_EMAIL_DOMAIN}`)) {
       return {
         success: false,
-        message: 'Please use a ClassSync email that ends with @classsync.com.'
+        message: `Please use a Luminote email that ends with @${APP_EMAIL_DOMAIN}.`
       };
     }
 
@@ -1490,7 +1516,7 @@ function App() {
       email: normalizedEmail,
       password: password.trim(),
       role: 'student',
-      bio: additionalInfo.bio?.trim() || 'New ClassSync member ready to share helpful notes.',
+      bio: additionalInfo.bio?.trim() || 'New Luminote member ready to share helpful notes.',
       course: additionalInfo.course?.trim() || '',
       yearLevel: additionalInfo.yearLevel?.trim() || '',
       profileVisibility: additionalInfo.profileVisibility || 'public',
@@ -1505,18 +1531,18 @@ function App() {
 
     return {
       success: true,
-      message: `Account created. Welcome to ClassSync, ${newUser.name}.`
+      message: `Account created. Welcome to Luminote, ${newUser.name}.`
     };
   };
 
   const getRecoveryQuestion = (email) => {
-    const normalizedEmail = normalizeClassSyncEmail(email);
+    const normalizedEmail = normalizeLuminoteEmail(email);
     const matchedUser = users.find((user) => user.email.toLowerCase() === normalizedEmail);
 
     if (!matchedUser) {
       return {
         success: false,
-        message: 'We could not find that ClassSync email.',
+        message: 'We could not find that Luminote email.',
         question: ''
       };
     }
@@ -1529,7 +1555,7 @@ function App() {
   };
 
   const handleForgotPassword = ({ email, securityAnswer, newPassword }) => {
-    const normalizedEmail = normalizeClassSyncEmail(email);
+    const normalizedEmail = normalizeLuminoteEmail(email);
     const normalizedAnswer = securityAnswer.trim().toLowerCase();
     const trimmedPassword = newPassword.trim();
     const matchedUser = users.find((user) => user.email.toLowerCase() === normalizedEmail);
@@ -1537,7 +1563,7 @@ function App() {
     if (!matchedUser) {
       return {
         success: false,
-        message: 'We could not find that ClassSync email.'
+        message: 'We could not find that Luminote email.'
       };
     }
 
@@ -1864,6 +1890,93 @@ function App() {
     });
   };
 
+  const getAdminAccountActionGuard = (targetUserId, action) => {
+    if (currentUser?.role !== 'admin') {
+      return {
+        success: false,
+        message: action === 'delete' ? 'Only admins can delete accounts.' : 'Only admins can manage account status.'
+      };
+    }
+
+    if (targetUserId === currentUser.id) {
+      return {
+        success: false,
+        message:
+          action === 'delete'
+            ? 'You cannot delete your own admin account.'
+            : 'You cannot deactivate your own admin account.'
+      };
+    }
+
+    const targetUser = users.find((user) => user.id === targetUserId);
+
+    if (!targetUser) {
+      return {
+        success: false,
+        message: 'That account could not be found.'
+      };
+    }
+
+    return {
+      success: true,
+      targetUser
+    };
+  };
+
+  const requestAdminToggleUserStatus = (targetUserId, shouldActivate, options = {}) => {
+    const guardResult = getAdminAccountActionGuard(targetUserId, 'status');
+
+    if (!guardResult.success) {
+      return guardResult;
+    }
+
+    const { targetUser } = guardResult;
+
+    openModal({
+      variant: shouldActivate ? 'default' : 'danger',
+      title: shouldActivate ? `Reactivate ${targetUser.name}?` : `Deactivate ${targetUser.name}?`,
+      message: shouldActivate
+        ? `${targetUser.name} will be able to log in to Luminote again.`
+        : `${targetUser.name} will not be able to log in, but their profile and shared content will remain in Luminote.`,
+      confirmLabel: shouldActivate ? 'Reactivate account' : 'Deactivate account',
+      onConfirm: () => {
+        const result = handleAdminToggleUserStatus(targetUserId, shouldActivate);
+        closeModal();
+        options.onComplete?.(result);
+      }
+    });
+
+    return {
+      success: true
+    };
+  };
+
+  const requestAdminDeleteUser = (targetUserId, options = {}) => {
+    const guardResult = getAdminAccountActionGuard(targetUserId, 'delete');
+
+    if (!guardResult.success) {
+      return guardResult;
+    }
+
+    const { targetUser } = guardResult;
+
+    openModal({
+      variant: 'danger',
+      title: `Delete ${targetUser.name}'s account?`,
+      message: `This permanently removes the account from Luminote and cleans up room memberships. This cannot be undone.`,
+      confirmLabel: 'Delete account',
+      onConfirm: () => {
+        const result = handleAdminDeleteUser(targetUserId);
+        closeModal();
+        options.onComplete?.(result);
+      }
+    });
+
+    return {
+      success: true
+    };
+  };
+
   const toggleTheme = () => {
     setTheme((currentTheme) => (currentTheme === 'light' ? 'dark' : 'light'));
   };
@@ -1970,7 +2083,7 @@ function App() {
     openModal({
       variant: 'danger',
       title: 'Delete this note?',
-      message: `This will permanently remove "${note.title}" from ClassSync.`,
+      message: `This will permanently remove "${note.title}" from Luminote.`,
       confirmLabel: 'Delete note',
       onConfirm: () => {
         handleDeleteNote(noteId);
@@ -2367,6 +2480,33 @@ function App() {
     };
   };
 
+  const requestDeleteDirectConversation = (conversationKey, options = {}) => {
+    if (!currentUser || !conversationKey) {
+      return {
+        success: false,
+        message: 'Please choose a conversation first.'
+      };
+    }
+
+    const conversationName = options.conversationName ? ` with ${options.conversationName}` : '';
+
+    openModal({
+      variant: 'danger',
+      title: `Delete conversation${conversationName}?`,
+      message: 'This removes the conversation from your inbox on this account.',
+      confirmLabel: 'Delete conversation',
+      onConfirm: () => {
+        const result = handleDeleteDirectConversation(conversationKey);
+        closeModal();
+        options.onComplete?.(result);
+      }
+    });
+
+    return {
+      success: true
+    };
+  };
+
   const handleMarkRoomMessagesRead = (roomId) => {
     handleMarkConversationRead(`room:${roomId}`);
   };
@@ -2546,6 +2686,51 @@ function App() {
     return {
       success: true,
       message: 'Forum post deleted.'
+    };
+  };
+
+  const requestDeleteForumPost = (postId, options = {}) => {
+    if (!currentUser) {
+      return {
+        success: false,
+        message: 'Please log in before deleting a forum post.'
+      };
+    }
+
+    const targetPost = forumPosts.find((post) => String(post.id) === String(postId));
+
+    if (!targetPost) {
+      return {
+        success: false,
+        message: 'That forum post could not be found.'
+      };
+    }
+
+    const canDeletePost = currentUser.role === 'admin' || targetPost.authorId === currentUser.id;
+
+    if (!canDeletePost) {
+      return {
+        success: false,
+        message: 'Only admins and post authors can delete this forum post.'
+      };
+    }
+
+    const postLocation = targetPost.roomId || options.context === 'room' ? 'this room forum' : 'the forum';
+
+    openModal({
+      variant: 'danger',
+      title: `Delete "${targetPost.title}"?`,
+      message: `This removes the post from ${postLocation}.`,
+      confirmLabel: 'Delete post',
+      onConfirm: () => {
+        const result = handleDeleteForumPost(postId);
+        closeModal();
+        options.onComplete?.(result);
+      }
+    });
+
+    return {
+      success: true
     };
   };
 
@@ -2814,7 +2999,7 @@ function App() {
     return (
       <div className="app app-loading-shell">
         <div className="app-loading-card">
-          <p className="auth-eyebrow">ClassSync</p>
+          <p className="auth-eyebrow">Luminote</p>
           <h1>Loading your study space...</h1>
           <p>
             {isCloudSyncEnabled
@@ -2836,11 +3021,11 @@ function App() {
         <div className="app-loading-screen">
           <div className="app-loading-card app-cloud-error-card">
             <div className="brand-logo">
-              <span className="brand-mark">CS</span>
-              <span>ClassSync</span>
+              <span className="brand-mark">LN</span>
+              <span>Luminote</span>
             </div>
             <p className="auth-eyebrow">Cloud sync needs setup</p>
-            <h1>Supabase is not returning the ClassSync tables.</h1>
+            <h1>Supabase is not returning the Luminote tables.</h1>
             <p>
               Fresh devices will only see built-in/demo data until the SQL schema exists in the same Supabase
               project used by this deployed app.
@@ -2941,7 +3126,7 @@ function App() {
                 messages={messages}
                 onSendDirectMessage={handleSendDirectMessage}
                 onMarkConversationRead={handleMarkConversationRead}
-                onDeleteDirectConversation={handleDeleteDirectConversation}
+                onDeleteDirectConversation={requestDeleteDirectConversation}
               />
             }
           />
@@ -2985,8 +3170,8 @@ function App() {
                 onUpdateProfile={handleUpdateProfile}
                 onPreviewProfilePicture={handlePreviewProfilePicture}
                 onChangePassword={handleChangePassword}
-                onAdminToggleUserStatus={handleAdminToggleUserStatus}
-                onAdminDeleteUser={handleAdminDeleteUser}
+                onAdminToggleUserStatus={requestAdminToggleUserStatus}
+                onAdminDeleteUser={requestAdminDeleteUser}
               />
             }
           />
@@ -3003,8 +3188,8 @@ function App() {
                 onUpdateProfile={handleUpdateProfile}
                 onPreviewProfilePicture={handlePreviewProfilePicture}
                 onChangePassword={handleChangePassword}
-                onAdminToggleUserStatus={handleAdminToggleUserStatus}
-                onAdminDeleteUser={handleAdminDeleteUser}
+                onAdminToggleUserStatus={requestAdminToggleUserStatus}
+                onAdminDeleteUser={requestAdminDeleteUser}
               />
             }
           />
@@ -3030,7 +3215,7 @@ function App() {
                 onVote={handleVoteForumPost}
                 onComment={handleCommentOnPost}
                 onReport={requestReportItem}
-                onDeletePost={handleDeleteForumPost}
+                onDeletePost={requestDeleteForumPost}
               />
             }
           />
@@ -3065,7 +3250,7 @@ function App() {
                 onMarkRoomMessagesRead={handleMarkRoomMessagesRead}
                 onVotePost={handleVoteForumPost}
                 onCommentPost={handleCommentOnPost}
-                onDeletePost={handleDeleteForumPost}
+                onDeletePost={requestDeleteForumPost}
                 onReportPost={requestReportItem}
                 onToggleLike={handleToggleLike}
                 onDeleteNote={requestDeleteNote}

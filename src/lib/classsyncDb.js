@@ -8,14 +8,14 @@ const CLOUD_READ_TIMEOUT_MS = 4500;
 const CLOUD_WRITE_TIMEOUT_MS = 4500;
 
 const CLOUD_TABLES = {
-  forum: 'classsync_forum_posts',
-  gameScores: 'classsync_game_scores',
-  messages: 'classsync_messages',
-  notes: 'classsync_notes',
-  notifications: 'classsync_notifications',
-  reports: 'classsync_reports',
-  rooms: 'classsync_rooms',
-  users: 'classsync_users'
+  forum: 'luminote_forum_posts',
+  gameScores: 'luminote_game_scores',
+  messages: 'luminote_messages',
+  notes: 'luminote_notes',
+  notifications: 'luminote_notifications',
+  reports: 'luminote_reports',
+  rooms: 'luminote_rooms',
+  users: 'luminote_users'
 };
 
 let dbPromise = null;
@@ -350,7 +350,7 @@ export const subscribeToDbCollection = (key, onChange) => {
   }
 
   const channel = supabase
-    .channel(`classsync:${tableName}`)
+    .channel(`luminote:${tableName}`)
     .on(
       'postgres_changes',
       {

@@ -1,4 +1,4 @@
-# ClassSync Supabase Setup
+# Luminote Supabase Setup
 
 This project can be deployed on GitHub Pages, but shared data still needs an external backend. Supabase is a good fit because it provides:
 
@@ -28,15 +28,19 @@ For GitHub Pages, add the same values to your deployment workflow or build envir
 
 ## 3. Create the database schema
 
-Run the SQL from [supabase/classsync-schema.sql](/C:/Users/Asus/Desktop/Samem%20Files/FinalAptech/finalized/supabase/classsync-schema.sql) inside the Supabase SQL editor.
+Run the SQL from [supabase/luminote-schema.sql](/C:/Users/Asus/Desktop/Samem%20Files/FinalAptech/finalized/supabase/luminote-schema.sql) inside the Supabase SQL editor.
 
 That script creates:
 
 - `app_state` for legacy recovery only
-- `classsync_users`
-- `classsync_notes`
-- `classsync_forum_posts`
-- `classsync_rooms`
+- `luminote_users`
+- `luminote_notes`
+- `luminote_forum_posts`
+- `luminote_game_scores`
+- `luminote_messages`
+- `luminote_rooms`
+- `luminote_reports`
+- `luminote_notifications`
 
 The new frontend storage model uses one Supabase row per user, note, forum post, and room instead of storing each whole collection in a single shared JSON row.
 
@@ -44,6 +48,7 @@ Important:
 
 - this is much safer than the old shared-blob design because one stale browser can no longer overwrite the entire users list or the full forum in a single write
 - the SQL also migrates existing legacy `app_state` data into the new per-record tables
+- the SQL also copies existing `classsync_*` table data into the matching `luminote_*` tables for the Luminote rename
 - uploads are still stored inside each note payload for now, so they remain visible without adding a separate storage bucket
 - the current RLS policies stay intentionally simple because the app still uses browser-side auth patterns; they can be hardened later if you add real Supabase Auth
 
@@ -66,6 +71,6 @@ The repo now includes:
 - `.env.example` with the required frontend variables
 - `src/lib/supabaseClient.js` for the shared browser client
 - `src/lib/classsyncDb.js` with the safer per-record sync layer and automatic legacy migration fallback
-- `supabase/classsync-schema.sql` with the new per-record tables, policies, and legacy migration SQL
+- `supabase/luminote-schema.sql` with the new per-record tables, policies, and legacy migration SQL
 
 The app still needs one-time SQL setup in your Supabase dashboard before the live shared database can work.

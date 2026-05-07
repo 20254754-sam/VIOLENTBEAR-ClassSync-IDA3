@@ -2,7 +2,7 @@ import React from 'react';
 
 const UserAvatar = ({ user, size = 'md', className = '' }) => {
   const source = user?.profilePicture || '';
-  const label = user?.name || 'ClassSync user';
+  const label = user?.name || 'Luminote user';
 
   return (
     <img

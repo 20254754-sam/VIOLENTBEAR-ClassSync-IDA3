@@ -5,16 +5,16 @@ const AboutPage = () => {
   return (
     <div className="page about-page">
       <section className="hero about-hero about-hero-card">
-        <h1>About ClassSync</h1>
+        <h1>About Luminote</h1>
         <p className="page-description-box">
-          ClassSync is a student-friendly space for sharing notes, reviewing lessons,
+          Luminote is a student-friendly space for sharing notes, reviewing lessons,
           and keeping academic resources organized in one place.
         </p>
       </section>
 
       <section className="about-grid">
         <article className="about-card">
-          <h2>What ClassSync Does</h2>
+          <h2>What Luminote Does</h2>
           <p>
             The platform helps students upload reviewers, browse shared materials,
             and revisit useful notes anytime they need a quick study session.

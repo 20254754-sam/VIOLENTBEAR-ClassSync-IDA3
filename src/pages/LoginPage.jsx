@@ -10,6 +10,8 @@ const CLASSBLOCKS_DRAG_LIFT = 72;
 const CLASSBLOCKS_LEADERBOARD_KEY = 'classblocks-leaderboard-v1';
 const CLASSBLOCKS_DB_KEY = 'gameScores';
 const BACKGROUND_UNLOCK_BOOK_LIMIT = 5;
+const APP_EMAIL_DOMAIN = 'luminote.com';
+const LEGACY_EMAIL_DOMAIN = 'classsync.com';
 
 const backgroundNotes = [
   { className: 'auth-note-one', x: 0.12, y: 0.2, color: 'rgba(78, 110, 216, 0.58)' },
@@ -38,11 +40,14 @@ const cardBooks = [
   { className: 'auth-copy-book-seven' }
 ];
 
-const getEmailPrefix = (value) => value.replace(/@classsync\.com$/i, '').replace(/\s+/g, '');
+const getEmailPrefix = (value) =>
+  String(value || '')
+    .replace(new RegExp(`@(${APP_EMAIL_DOMAIN}|${LEGACY_EMAIL_DOMAIN})$`, 'i'), '')
+    .replace(/\s+/g, '');
 
-const getClassSyncEmail = (value) => {
+const getLuminoteEmail = (value) => {
   const prefix = getEmailPrefix(value || '').trim().toLowerCase();
-  return prefix ? `${prefix}@classsync.com` : '';
+  return prefix ? `${prefix}@${APP_EMAIL_DOMAIN}` : '';
 };
 
 const readClassBlocksLeaderboard = () => {
@@ -109,7 +114,7 @@ const sortClassBlocksLeaderboard = (leaderboard) =>
 
 const getClassBlocksPlayer = ({ mode, credentials, registerForm, users }) => {
   const formEmail = mode === 'register' ? registerForm.email : credentials.email;
-  const email = getClassSyncEmail(formEmail);
+  const email = getLuminoteEmail(formEmail);
   const matchedUser = users.find((user) => user.email?.toLowerCase() === email);
   const fallbackName = mode === 'register' ? registerForm.name.trim() : '';
 
@@ -123,7 +128,7 @@ const getClassBlocksPlayer = ({ mode, credentials, registerForm, users }) => {
 
   return {
     id: matchedUser?.id || email,
-    name: matchedUser?.name || fallbackName || getEmailPrefix(email) || 'ClassSync Player',
+    name: matchedUser?.name || fallbackName || getEmailPrefix(email) || 'Luminote Player',
     email
   };
 };
@@ -376,7 +381,7 @@ const EmailField = ({ id, label, value, onChange, placeholder = 'username' }) =>
         placeholder={placeholder}
         onChange={(event) => onChange(getEmailPrefix(event.target.value))}
       />
-      <span>@classsync.com</span>
+      <span>{`@${APP_EMAIL_DOMAIN}`}</span>
     </div>
   </div>
 );
@@ -1327,7 +1332,7 @@ const LoginPage = ({
       <div ref={cardRef} className="auth-card">
         <div className="auth-copy">
           <BrandLogo size="lg" className="auth-brand" />
-          <p className="auth-eyebrow">ClassSync access</p>
+          <p className="auth-eyebrow">Luminote access</p>
           <h1>{mode === 'login' ? 'Login to continue' : 'Create your account'}</h1>
           <p>
             Students can upload notes and join discussions. Admin accounts review submissions
@@ -1397,7 +1402,7 @@ const LoginPage = ({
               <div className="auth-form-body">
                 <EmailField
                   id="login-email"
-                  label="ClassSync email"
+                  label="Luminote email"
                   value={credentials.email}
                   onChange={(value) => setCredentials((current) => ({ ...current, email: value }))}
                 />
@@ -1444,11 +1449,11 @@ const LoginPage = ({
               {showForgotPassword && (
                 <div className="auth-recovery-box">
                   <h3>Recover password</h3>
-                  <p>Use your ClassSync email and personal answer to set a new password.</p>
+                  <p>Use your Luminote email and personal answer to set a new password.</p>
                   <div className="auth-recovery-form">
                     <EmailField
                       id="recover-email"
-                      label="ClassSync email"
+                      label="Luminote email"
                       value={forgotPasswordForm.email}
                       onChange={(value) => setForgotPasswordForm((current) => ({ ...current, email: value }))}
                     />
@@ -1513,7 +1518,7 @@ const LoginPage = ({
 
                 <EmailField
                   id="register-email"
-                  label="ClassSync email"
+                  label="Luminote email"
                   value={registerForm.email}
                   onChange={(value) => setRegisterForm((current) => ({ ...current, email: value }))}
                 />
@@ -1667,7 +1672,7 @@ const LoginPage = ({
             <h3>Demo accounts</h3>
             <div className="demo-credential-card">
               <strong>For student</strong>
-              <p>Email: student@classsync.com</p>
+              <p>{`Email: student@${APP_EMAIL_DOMAIN}`}</p>
             </div>
             <div className="recovery-entry-card">
               <strong>Missing old data?</strong>

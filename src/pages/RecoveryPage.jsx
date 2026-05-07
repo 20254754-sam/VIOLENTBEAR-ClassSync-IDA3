@@ -203,7 +203,7 @@ const RecoveryPage = ({ storageKeys, dbKeys, seedUsers, seedForumPosts }) => {
         <p className="auth-eyebrow">Recovery</p>
         <h1>Browser data scanner</h1>
         <p className="recovery-intro">
-          Open this page on each browser or device that used ClassSync before the data disappeared. We are looking for a
+          Open this page on each browser or device that used Luminote before the data disappeared. We are looking for a
           browser that still has extra accounts or forum posts saved locally.
         </p>
 

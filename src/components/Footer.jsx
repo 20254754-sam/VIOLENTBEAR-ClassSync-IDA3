@@ -22,7 +22,7 @@ const Footer = () => {
           Back to top
         </button>
         <div className="app-footer-meta">
-          <small>&copy; {currentYear} ClassSync. All rights reserved.</small>
+          <small>&copy; {currentYear} Luminote. All rights reserved.</small>
         </div>
       </div>
     </footer>

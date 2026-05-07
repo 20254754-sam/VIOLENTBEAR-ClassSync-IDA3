@@ -115,7 +115,7 @@ const RoomsPage = ({ currentUser, rooms, onCreateRoom, onJoinRoom, getRoomLink }
 
           <div className="rooms-tip-card">
             <strong>{currentUser.name}</strong>
-            <p>Your rooms and invite links are shared through the published ClassSync database.</p>
+            <p>Your rooms and invite links are shared through the published Luminote database.</p>
           </div>
         </section>
       </div>

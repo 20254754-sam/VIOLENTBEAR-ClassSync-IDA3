@@ -175,25 +175,28 @@ const ProfilePage = ({
 
   const handleToggleAccountStatus = () => {
     const nextStatus = profileUser.isActive === false;
-    const result = onAdminToggleUserStatus(profileUser.id, nextStatus);
+    const result = onAdminToggleUserStatus(profileUser.id, nextStatus, {
+      onComplete: (actionResult) => setAdminAccountFeedback(actionResult.message)
+    });
 
-    setAdminAccountFeedback(result.message);
+    if (result?.message) {
+      setAdminAccountFeedback(result.message);
+    }
   };
 
   const handleDeleteAccount = () => {
-    const shouldDelete = window.confirm(
-      `Delete ${profileUser.name}'s account? This removes the account from ClassSync and cannot be undone.`
-    );
+    const result = onAdminDeleteUser(profileUser.id, {
+      onComplete: (actionResult) => {
+        setAdminAccountFeedback(actionResult.message);
 
-    if (!shouldDelete) {
-      return;
-    }
+        if (actionResult.success) {
+          navigate('/browse');
+        }
+      }
+    });
 
-    const result = onAdminDeleteUser(profileUser.id);
-    setAdminAccountFeedback(result.message);
-
-    if (result.success) {
-      navigate('/browse');
+    if (result?.message) {
+      setAdminAccountFeedback(result.message);
     }
   };
 
@@ -247,7 +250,7 @@ const ProfilePage = ({
           </div>
         </div>
         <div className="profile-details-panel">
-          <p><strong>ClassSync email:</strong> {profileUser.email}</p>
+          <p><strong>Luminote email:</strong> {profileUser.email}</p>
           <p><strong>Course:</strong> {isPrivateToViewer ? 'Private' : profileUser.course || 'Not set yet'}</p>
           <p><strong>Year level:</strong> {isPrivateToViewer ? 'Private' : profileUser.yearLevel || 'Not set yet'}</p>
           <p><strong>Visibility:</strong> {profileUser.profileVisibility}</p>
@@ -263,7 +266,7 @@ const ProfilePage = ({
             <h2>Manage this account</h2>
             <p>
               Deactivate to temporarily block login while keeping the profile. Delete removes the user account
-              from ClassSync and cleans up room memberships.
+              from Luminote and cleans up room memberships.
             </p>
           </div>
           <div className="profile-admin-danger-actions">

@@ -185,13 +185,7 @@ const ForumPage = ({ currentUser, users = [], posts, onCreatePost, onVote, onCom
                     <button
                       type="button"
                       className="forum-delete-button"
-                      onClick={() => {
-                        const shouldDelete = window.confirm(`Delete "${post.title}" from the forum?`);
-
-                        if (shouldDelete) {
-                          onDeletePost(post.id);
-                        }
-                      }}
+                      onClick={() => onDeletePost(post.id)}
                     >
                       Delete
                     </button>

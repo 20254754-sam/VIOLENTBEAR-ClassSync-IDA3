@@ -737,22 +737,23 @@ const MessagesPage = ({
       return;
     }
 
-    const shouldDelete = window.confirm(`Delete your conversation with ${selectedUser.name}?`);
+    const result = onDeleteDirectConversation(activeConversationKey, {
+      conversationName: selectedUser.name,
+      onComplete: (actionResult) => {
+        if (actionResult.success) {
+          setDraft('');
+          setAttachmentDrafts([]);
+          setAttachmentError('');
+          setOpenAttachmentMenuId('');
+          syncedRouteUserRef.current = '';
+          setActiveUserId('');
+          setSearchParams({}, { replace: true });
+        }
+      }
+    });
 
-    if (!shouldDelete) {
-      return;
-    }
-
-    const result = onDeleteDirectConversation(activeConversationKey);
-
-    if (result.success) {
-      setDraft('');
-      setAttachmentDrafts([]);
-      setAttachmentError('');
-      setOpenAttachmentMenuId('');
-      syncedRouteUserRef.current = '';
-      setActiveUserId('');
-      setSearchParams({}, { replace: true });
+    if (result?.message) {
+      setAttachmentError(result.message);
     }
   };
 

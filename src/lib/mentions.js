@@ -1,7 +1,7 @@
 export const getMentionHandle = (user) =>
-  (user?.name || 'ClassSyncUser')
+  (user?.name || 'LuminoteUser')
     .replace(/[^a-zA-Z0-9_]/g, '')
-    .slice(0, 24) || 'ClassSyncUser';
+    .slice(0, 24) || 'LuminoteUser';
 
 export const findMentionedUsers = (text = '', users = []) => {
   const mentionTokens = new Set(
