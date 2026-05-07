@@ -8,6 +8,7 @@ const CLOUD_READ_TIMEOUT_MS = 4500;
 const CLOUD_WRITE_TIMEOUT_MS = 4500;
 const CLOUD_CACHE_TTL_MS = 5 * 60 * 1000;
 export const ATTACHMENT_BUCKET = 'luminote-attachments';
+export const ATTACHMENT_FILE_SIZE_LIMIT_BYTES = 10 * 1024 * 1024;
 
 const CLOUD_TABLES = {
   forum: 'luminote_forum_posts',
@@ -114,6 +115,39 @@ export const getDbTableName = (key) => getCloudTable(key);
 
 export const getAttachmentUrl = (attachment = {}) => attachment.url || attachment.dataUrl || '';
 
+export const formatFileSize = (bytes = 0) => {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return '0 MB';
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  }
+
+  const megabytes = bytes / (1024 * 1024);
+  const displayValue = Number.isInteger(megabytes) ? String(megabytes) : megabytes.toFixed(megabytes >= 100 ? 0 : 1);
+
+  return `${displayValue} MB`;
+};
+
+export const getAttachmentUploadErrorMessage = (error, label = 'attachments') => {
+  const detail = error?.message || '';
+
+  if (/bucket|storage|row-level security|policy|permission|unauthorized|forbidden/i.test(detail)) {
+    return `The ${label} could not be uploaded because Supabase Storage is not ready. Run the updated Supabase setup SQL, then try again.`;
+  }
+
+  if (/too large|size|limit|payload/i.test(detail)) {
+    return detail;
+  }
+
+  if (/failed to fetch|network|timed out|timeout/i.test(detail)) {
+    return `The ${label} upload was interrupted. Check your internet connection, then try again.`;
+  }
+
+  return detail || `The ${label} could not be uploaded. Please try again.`;
+};
+
 const isDataUrl = (value = '') => typeof value === 'string' && value.startsWith('data:');
 
 const sanitizeStorageSegment = (value = 'file') =>
@@ -156,48 +190,58 @@ export const uploadAttachmentsToStorage = async (attachments = [], options = {})
     return [];
   }
 
-  return Promise.all(
-    safeAttachments.map(async (attachment, index) => {
-      const normalized = normalizeAttachmentMetadata(attachment);
-      const sourceUrl = getAttachmentUrl(attachment);
+  const uploadedAttachments = [];
 
-      if (!isSupabaseConfigured || !isDataUrl(sourceUrl)) {
-        return normalized;
-      }
+  for (const [index, attachment] of safeAttachments.entries()) {
+    const normalized = normalizeAttachmentMetadata(attachment);
+    const sourceUrl = getAttachmentUrl(attachment);
 
-      const blob = await dataUrlToBlob(sourceUrl);
-      const collection = sanitizeStorageSegment(options.collection || 'attachments');
-      const ownerId = sanitizeStorageSegment(options.ownerId || 'anonymous');
-      const itemId = sanitizeStorageSegment(options.itemId || `item-${Date.now()}`);
-      const fileName = sanitizeStorageSegment(normalized.name);
-      const storagePath = `${collection}/${ownerId}/${itemId}/${Date.now()}-${index}-${fileName}`;
-      const { error } = await supabase.storage
-        .from(ATTACHMENT_BUCKET)
-        .upload(storagePath, blob, {
-          cacheControl: '31536000',
-          contentType: normalized.type,
-          upsert: true
-        });
+    if (!isSupabaseConfigured || !isDataUrl(sourceUrl)) {
+      uploadedAttachments.push(normalized);
+      continue;
+    }
 
-      if (error) {
-        throw error;
-      }
+    if (normalized.size > ATTACHMENT_FILE_SIZE_LIMIT_BYTES) {
+      throw new Error(
+        `"${normalized.name}" is ${formatFileSize(normalized.size)}. The upload limit is ${formatFileSize(
+          ATTACHMENT_FILE_SIZE_LIMIT_BYTES
+        )} per file.`
+      );
+    }
 
-      const { data } = supabase.storage.from(ATTACHMENT_BUCKET).getPublicUrl(storagePath);
+    const blob = await dataUrlToBlob(sourceUrl);
+    const collection = sanitizeStorageSegment(options.collection || 'attachments');
+    const ownerId = sanitizeStorageSegment(options.ownerId || 'anonymous');
+    const itemId = sanitizeStorageSegment(options.itemId || `item-${Date.now()}`);
+    const fileName = sanitizeStorageSegment(normalized.name);
+    const storagePath = `${collection}/${ownerId}/${itemId}/${Date.now()}-${index}-${fileName}`;
+    const { error } = await supabase.storage
+      .from(ATTACHMENT_BUCKET)
+      .upload(storagePath, blob, {
+        cacheControl: '31536000',
+        contentType: normalized.type
+      });
 
-      return {
-        id: normalized.id,
-        name: normalized.name,
-        type: normalized.type,
-        size: normalized.size || blob.size,
-        attachedAt: normalized.attachedAt,
-        isImage: normalized.isImage,
-        url: data.publicUrl,
-        storagePath,
-        bucket: ATTACHMENT_BUCKET
-      };
-    })
-  );
+    if (error) {
+      throw new Error(`"${normalized.name}" could not be uploaded: ${error.message || 'Supabase rejected the file.'}`);
+    }
+
+    const { data } = supabase.storage.from(ATTACHMENT_BUCKET).getPublicUrl(storagePath);
+
+    uploadedAttachments.push({
+      id: normalized.id,
+      name: normalized.name,
+      type: normalized.type,
+      size: normalized.size || blob.size,
+      attachedAt: normalized.attachedAt,
+      isImage: normalized.isImage,
+      url: data.publicUrl,
+      storagePath,
+      bucket: ATTACHMENT_BUCKET
+    });
+  }
+
+  return uploadedAttachments;
 };
 
 const readLocalDbValue = async (key, fallback) => {
@@ -364,7 +408,7 @@ const readCloudDbValue = async (key, fallback, options = {}) => {
     return migratedValue;
   }
 
-  return fallback;
+  return [];
 };
 
 const writeCloudDbValue = async (key, value) => {
@@ -406,8 +450,6 @@ export const readDbValue = async (key, fallback) => {
 };
 
 export const writeDbItem = async (key, item) => {
-  await upsertLocalDbItem(key, item);
-
   if (isSupabaseConfigured && getCloudTable(key)) {
     await withTimeout(
       upsertCloudCollectionItem(key, item),
@@ -415,11 +457,11 @@ export const writeDbItem = async (key, item) => {
       `Cloud item write timed out for ${key}.`
     );
   }
+
+  await upsertLocalDbItem(key, item);
 };
 
 export const writeDbValue = async (key, value) => {
-  await writeLocalDbValue(key, value);
-
   if (isSupabaseConfigured) {
     await withTimeout(
       writeCloudDbValue(key, value),
@@ -427,11 +469,11 @@ export const writeDbValue = async (key, value) => {
       `Cloud write timed out for ${key}.`
     );
   }
+
+  await writeLocalDbValue(key, value);
 };
 
 export const deleteDbItem = async (key, itemId) => {
-  await deleteLocalDbItem(key, itemId);
-
   if (isSupabaseConfigured && getCloudTable(key)) {
     await withTimeout(
       deleteCloudCollectionItem(key, itemId),
@@ -439,6 +481,8 @@ export const deleteDbItem = async (key, itemId) => {
       `Cloud delete timed out for ${key}.`
     );
   }
+
+  await deleteLocalDbItem(key, itemId);
 };
 
 export const readManyDbValues = async (entries) => {

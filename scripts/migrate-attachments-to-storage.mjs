@@ -68,8 +68,7 @@ const uploadDataUrl = async (supabase, dataUrl, { collection, itemId, ownerId, n
   const storagePath = `${safeCollection}/${safeOwnerId}/${safeItemId}/${Date.now()}-${index}-${safeName}`;
   const { error } = await supabase.storage.from(BUCKET).upload(storagePath, buffer, {
     cacheControl: '31536000',
-    contentType: mimeType,
-    upsert: true
+    contentType: mimeType
   });
 
   if (error) {

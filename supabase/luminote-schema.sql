@@ -13,12 +13,14 @@ drop policy if exists "Luminote attachments can be uploaded by everyone" on stor
 create policy "Luminote attachments can be uploaded by everyone"
 on storage.objects
 for insert
+to anon, authenticated
 with check (bucket_id = 'luminote-attachments');
 
 drop policy if exists "Luminote attachments can be updated by everyone" on storage.objects;
 create policy "Luminote attachments can be updated by everyone"
 on storage.objects
 for update
+to anon, authenticated
 using (bucket_id = 'luminote-attachments')
 with check (bucket_id = 'luminote-attachments');
 
@@ -26,6 +28,7 @@ drop policy if exists "Luminote attachments can be deleted by everyone" on stora
 create policy "Luminote attachments can be deleted by everyone"
 on storage.objects
 for delete
+to anon, authenticated
 using (bucket_id = 'luminote-attachments');
 
 create table if not exists public.app_state (

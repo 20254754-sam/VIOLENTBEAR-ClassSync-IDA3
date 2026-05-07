@@ -20,6 +20,7 @@ import RoomDetailsPage from './pages/RoomDetailsPage';
 import RoomNoteDetailsPage from './pages/RoomNoteDetailsPage';
 import {
   deleteDbItem,
+  getAttachmentUploadErrorMessage,
   isCloudSyncEnabled,
   readDbValue,
   readManyDbSnapshots,
@@ -681,12 +682,84 @@ const normalizeReports = (reports) =>
     createdAt: report.createdAt || new Date().toISOString()
   }));
 
+const sanitizeNotificationIdPart = (value) =>
+  String(value ?? 'item')
+    .trim()
+    .replace(/[^a-z0-9._-]+/gi, '-')
+    .replace(/^-+|-+$/g, '') || 'item';
+
+const buildLikeNotificationId = (noteId, userId) =>
+  `notification-like-${sanitizeNotificationIdPart(noteId)}-${sanitizeNotificationIdPart(userId)}`;
+
+const buildLikeNotificationPayload = (note, user) => {
+  const link = note.roomId ? `/rooms/${note.roomId}/note/${note.id}` : `/note/${note.id}`;
+
+  return {
+    id: buildLikeNotificationId(note.id, user.id),
+    dedupeKey: `note-like:${note.id}:${user.id}`,
+    targetUserId: note.uploaderId,
+    title: 'Someone liked your note',
+    message: `${user.name} liked "${note.title}".`,
+    type: 'note-like',
+    link,
+    actorId: user.id,
+    sourceId: note.id,
+    sourceType: 'note'
+  };
+};
+
+const isMatchingLikeNotification = (notification, payload) => {
+  if (notification.id === payload.id || notification.dedupeKey === payload.dedupeKey) {
+    return true;
+  }
+
+  if (notification.type !== 'note-like' || String(notification.targetUserId) !== String(payload.targetUserId)) {
+    return false;
+  }
+
+  const matchesStoredMeta =
+    notification.actorId &&
+    notification.sourceId &&
+    String(notification.actorId) === String(payload.actorId) &&
+    String(notification.sourceId) === String(payload.sourceId);
+  const matchesLegacyCopy =
+    !notification.actorId && !notification.sourceId && notification.link === payload.link && notification.message === payload.message;
+
+  return matchesStoredMeta || matchesLegacyCopy;
+};
+
+const getNotificationDedupeKey = (notification) => {
+  if (notification.dedupeKey) {
+    return notification.dedupeKey;
+  }
+
+  if (notification.type === 'note-like') {
+    if (notification.actorId && notification.sourceId) {
+      return `note-like:${notification.sourceId}:${notification.actorId}`;
+    }
+
+    return `legacy-note-like:${notification.targetUserId}:${notification.link}:${notification.message}`;
+  }
+
+  return notification.id;
+};
+
 const normalizeNotifications = (notifications) =>
-  (notifications || []).map((notification) => ({
-    ...notification,
-    createdAt: notification.createdAt || new Date().toISOString(),
-    readAt: notification.readAt || null
-  }));
+  (notifications || [])
+    .map((notification) => ({
+      ...notification,
+      actorId: notification.actorId || '',
+      sourceId: notification.sourceId || '',
+      sourceType: notification.sourceType || '',
+      dedupeKey: notification.dedupeKey || '',
+      createdAt: notification.createdAt || new Date().toISOString(),
+      readAt: notification.readAt || null
+    }))
+    .filter((notification, index, normalizedNotifications) => {
+      const dedupeKey = getNotificationDedupeKey(notification);
+
+      return normalizedNotifications.findIndex((item) => getNotificationDedupeKey(item) === dedupeKey) === index;
+    });
 
 const normalizeMessages = (messages) =>
   (messages || []).map((message) => ({
@@ -1791,7 +1864,7 @@ function App() {
     };
   };
 
-  const handleAdminToggleUserStatus = (targetUserId, shouldActivate) => {
+  const handleAdminToggleUserStatus = async (targetUserId, shouldActivate) => {
     if (currentUser?.role !== 'admin') {
       return {
         success: false,
@@ -1816,21 +1889,30 @@ function App() {
     }
 
     const updatedAt = new Date().toISOString();
-    const nextUsers = users.map((user) =>
-      user.id === targetUserId
-        ? normalizeUserRecord({
-            ...user,
-            isActive: shouldActivate,
-            deactivatedAt: shouldActivate ? null : updatedAt,
-            deactivatedByName: shouldActivate ? '' : currentUser.name,
-            updatedAt
-          })
-        : user
-    );
+    const nextUser = normalizeUserRecord({
+      ...targetUser,
+      isActive: shouldActivate,
+      deactivatedAt: shouldActivate ? null : updatedAt,
+      deactivatedByName: shouldActivate ? '' : currentUser.name,
+      updatedAt
+    });
+    const nextUsers = users.map((user) => (user.id === targetUserId ? nextUser : user));
+
+    try {
+      await writeDbItem(DB_KEYS.users, nextUser);
+    } catch {
+      const message = `Luminote could not ${shouldActivate ? 'reactivate' : 'deactivate'} ${targetUser.name} in Supabase. Please refresh and try again.`;
+      setCloudSyncError(message);
+
+      return {
+        success: false,
+        message
+      };
+    }
 
     setUsers(nextUsers);
     writeStorage(STORAGE_KEYS.users, nextUsers);
-    writeDbItem(DB_KEYS.users, nextUsers.find((user) => user.id === targetUserId)).catch(() => undefined);
+    setCloudSyncError('');
 
     return {
       success: true,
@@ -1838,7 +1920,7 @@ function App() {
     };
   };
 
-  const handleAdminDeleteUser = (targetUserId) => {
+  const handleAdminDeleteUser = async (targetUserId) => {
     if (currentUser?.role !== 'admin') {
       return {
         success: false,
@@ -1871,6 +1953,25 @@ function App() {
     }));
     const nextNotifications = notifications.filter((notification) => notification.targetUserId !== targetUserId);
     const nextMessages = messages.filter((message) => !(message.participants || []).includes(targetUserId));
+    const removedNotifications = notifications.filter((notification) => notification.targetUserId === targetUserId);
+    const removedMessages = messages.filter((message) => (message.participants || []).includes(targetUserId));
+
+    try {
+      await Promise.all([
+        deleteDbItem(DB_KEYS.users, targetUserId),
+        ...nextRooms.map((room) => writeDbItem(DB_KEYS.rooms, room)),
+        ...removedNotifications.map((notification) => deleteDbItem(DB_KEYS.notifications, notification.id)),
+        ...removedMessages.map((message) => deleteDbItem(DB_KEYS.messages, message.id))
+      ]);
+    } catch {
+      const message = `Luminote could not delete ${targetUser.name}'s account in Supabase. Please refresh and try again.`;
+      setCloudSyncError(message);
+
+      return {
+        success: false,
+        message
+      };
+    }
 
     setUsers(nextUsers);
     setRooms(nextRooms);
@@ -1885,12 +1986,7 @@ function App() {
       reports,
       rooms: nextRooms
     });
-    Promise.all([
-      deleteDbItem(DB_KEYS.users, targetUserId).catch(() => undefined),
-      writeDbValue(DB_KEYS.rooms, nextRooms).catch(() => undefined),
-      writeDbValue(DB_KEYS.notifications, nextNotifications).catch(() => undefined),
-      writeDbValue(DB_KEYS.messages, nextMessages).catch(() => undefined)
-    ]);
+    setCloudSyncError('');
 
     return {
       success: true,
@@ -1976,8 +2072,8 @@ function App() {
         ? `${targetUser.name} will be able to log in to Luminote again.`
         : `${targetUser.name} will not be able to log in, but their profile and shared content will remain in Luminote.`,
       confirmLabel: shouldActivate ? 'Reactivate account' : 'Deactivate account',
-      onConfirm: () => {
-        const result = handleAdminToggleUserStatus(targetUserId, shouldActivate);
+      onConfirm: async () => {
+        const result = await handleAdminToggleUserStatus(targetUserId, shouldActivate);
         closeModal();
         options.onComplete?.(result);
       }
@@ -2002,8 +2098,8 @@ function App() {
       title: `Delete ${targetUser.name}'s account?`,
       message: `This permanently removes the account from Luminote and cleans up room memberships. This cannot be undone.`,
       confirmLabel: 'Delete account',
-      onConfirm: () => {
-        const result = handleAdminDeleteUser(targetUserId);
+      onConfirm: async () => {
+        const result = await handleAdminDeleteUser(targetUserId);
         closeModal();
         options.onComplete?.(result);
       }
@@ -2046,10 +2142,10 @@ function App() {
         itemId: noteId,
         ownerId: currentUser.id
       });
-    } catch {
+    } catch (error) {
       return {
         success: false,
-        message: 'The attachments could not be uploaded. Run the Supabase setup SQL, then try again.'
+        message: getAttachmentUploadErrorMessage(error)
       };
     }
 
@@ -2120,15 +2216,38 @@ function App() {
     };
   };
 
-  const handleDeleteNote = (noteId) => {
+  const handleDeleteNote = async (noteId) => {
+    const deletedNote = notes.find((note) => note.id === noteId);
+
+    if (!deletedNote) {
+      return {
+        success: false,
+        message: 'That note could not be found.'
+      };
+    }
+
+    try {
+      await deleteDbItem(DB_KEYS.notes, noteId);
+    } catch {
+      const message = `Luminote could not delete "${deletedNote.title}" in Supabase. Please refresh and try again.`;
+      setCloudSyncError(message);
+
+      return {
+        success: false,
+        message
+      };
+    }
+
     setNotes((previousNotes) => previousNotes.filter((note) => note.id !== noteId));
     if (editingNoteId === noteId) {
       setEditingNoteId(null);
     }
+    setCloudSyncError('');
 
-    deleteDbItem(DB_KEYS.notes, noteId).catch(() => {
-      // The notes effect keeps local cache in sync; this prevents cloud deletes from blocking the UI.
-    });
+    return {
+      success: true,
+      message: `"${deletedNote.title}" was deleted.`
+    };
   };
 
   const requestDeleteNote = (noteId, options = {}) => {
@@ -2142,10 +2261,12 @@ function App() {
       title: 'Delete this note?',
       message: `This will permanently remove "${note.title}" from Luminote.`,
       confirmLabel: 'Delete note',
-      onConfirm: () => {
-        handleDeleteNote(noteId);
+      onConfirm: async () => {
+        const result = await handleDeleteNote(noteId);
         closeModal();
-        options.onSuccess?.();
+        if (result.success) {
+          options.onSuccess?.();
+        }
       }
     });
   };
@@ -2174,14 +2295,15 @@ function App() {
       writeDbItem(DB_KEYS.notes, updatedNote).catch(() => undefined);
     }
 
-    if (targetNote && targetNote.uploaderId !== currentUser.id && !targetNote.likes.includes(currentUser.id)) {
-      createNotification({
-        targetUserId: targetNote.uploaderId,
-        title: 'Someone liked your note',
-        message: `${currentUser.name} liked "${targetNote.title}".`,
-        type: 'note-like',
-        link: targetNote.roomId ? `/rooms/${targetNote.roomId}/note/${targetNote.id}` : `/note/${targetNote.id}`
-      });
+    if (targetNote.uploaderId !== currentUser.id) {
+      const likeNotification = buildLikeNotificationPayload(targetNote, currentUser);
+      const matchesLikeNotification = (notification) => isMatchingLikeNotification(notification, likeNotification);
+
+      if (alreadyLiked) {
+        removeNotificationsMatching(matchesLikeNotification, likeNotification.id);
+      } else {
+        createNotification(likeNotification, matchesLikeNotification);
+      }
     }
   };
 
@@ -2228,11 +2350,14 @@ function App() {
     }
   };
 
-  const handleApproveNote = (noteId) => {
+  const handleApproveNote = async (noteId) => {
     const approvedNote = notes.find((note) => note.id === noteId);
 
     if (!approvedNote) {
-      return;
+      return {
+        success: false,
+        message: 'That note could not be found.'
+      };
     }
 
     const approvedAt = new Date().toISOString();
@@ -2245,8 +2370,20 @@ function App() {
       updatedAt: approvedAt
     };
 
+    try {
+      await writeDbItem(DB_KEYS.notes, updatedNote);
+    } catch {
+      const message = `Luminote could not approve "${approvedNote.title}" in Supabase. Please refresh and try again.`;
+      setCloudSyncError(message);
+
+      return {
+        success: false,
+        message
+      };
+    }
+
     setNotes((previousNotes) => previousNotes.map((note) => (note.id === noteId ? updatedNote : note)));
-    writeDbItem(DB_KEYS.notes, updatedNote).catch(() => undefined);
+    setCloudSyncError('');
 
     if (approvedNote && approvedNote.uploaderId !== currentUser?.id) {
       createNotification({
@@ -2257,13 +2394,21 @@ function App() {
         link: approvedNote.roomId ? `/rooms/${approvedNote.roomId}/note/${approvedNote.id}` : `/note/${approvedNote.id}`
       });
     }
+
+    return {
+      success: true,
+      message: `"${approvedNote.title}" was approved.`
+    };
   };
 
-  const handleRejectNote = (noteId, rejectionReason) => {
+  const handleRejectNote = async (noteId, rejectionReason) => {
     const rejectedNote = notes.find((note) => note.id === noteId);
 
     if (!rejectedNote) {
-      return;
+      return {
+        success: false,
+        message: 'That note could not be found.'
+      };
     }
 
     const updatedNote = {
@@ -2274,8 +2419,20 @@ function App() {
       updatedAt: new Date().toISOString()
     };
 
+    try {
+      await writeDbItem(DB_KEYS.notes, updatedNote);
+    } catch {
+      const message = `Luminote could not reject "${rejectedNote.title}" in Supabase. Please refresh and try again.`;
+      setCloudSyncError(message);
+
+      return {
+        success: false,
+        message
+      };
+    }
+
     setNotes((previousNotes) => previousNotes.map((note) => (note.id === noteId ? updatedNote : note)));
-    writeDbItem(DB_KEYS.notes, updatedNote).catch(() => undefined);
+    setCloudSyncError('');
 
     if (rejectedNote && rejectedNote.uploaderId !== currentUser?.id) {
       createNotification({
@@ -2286,6 +2443,11 @@ function App() {
         link: '/profile'
       });
     }
+
+    return {
+      success: true,
+      message: `"${rejectedNote.title}" was rejected.`
+    };
   };
 
   const requestApproveNote = (noteId) => {
@@ -2298,8 +2460,8 @@ function App() {
       title: 'Approve this submission?',
       message: `"${note.title}" will become visible to all students once approved.`,
       confirmLabel: 'Approve note',
-      onConfirm: () => {
-        handleApproveNote(noteId);
+      onConfirm: async () => {
+        await handleApproveNote(noteId);
         closeModal();
       }
     });
@@ -2320,31 +2482,79 @@ function App() {
       commentLabel: 'Rejection comment',
       commentPlaceholder: 'Example: Please fix formatting, improve clarity, or add the complete source details.',
       initialComment: note.rejectionReason || '',
-      onConfirm: (comment) => {
-        handleRejectNote(noteId, comment);
+      onConfirm: async (comment) => {
+        await handleRejectNote(noteId, comment);
         closeModal();
       }
     });
   };
 
-  const createNotification = ({ message, targetUserId, title, type = 'system', link = '' }) => {
+  const createNotification = (
+    {
+      actorId = '',
+      dedupeKey = '',
+      id = '',
+      link = '',
+      message,
+      sourceId = '',
+      sourceType = '',
+      targetUserId,
+      title,
+      type = 'system'
+    },
+    matchesExisting = null
+  ) => {
     if (!targetUserId) {
       return;
     }
 
     const nextNotification = {
-      id: `notification-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: id || `notification-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       targetUserId,
       title,
       message,
       type,
       link,
+      actorId,
+      sourceId,
+      sourceType,
+      dedupeKey,
       createdAt: new Date().toISOString(),
       readAt: null
     };
+    const duplicateIds = notifications
+      .filter((notification) => notification.id !== nextNotification.id && matchesExisting?.(notification))
+      .map((notification) => notification.id);
 
-    setNotifications((previousNotifications) => [nextNotification, ...previousNotifications]);
+    setNotifications((previousNotifications) => [
+      nextNotification,
+      ...previousNotifications.filter(
+        (notification) => notification.id !== nextNotification.id && !matchesExisting?.(notification)
+      )
+    ]);
     writeDbItem(DB_KEYS.notifications, nextNotification).catch(() => undefined);
+    Promise.all(duplicateIds.map((notificationId) => deleteDbItem(DB_KEYS.notifications, notificationId))).catch(
+      () => undefined
+    );
+  };
+
+  const removeNotificationsMatching = (matchesNotification, fallbackNotificationId = '') => {
+    const idsToDelete = new Set(fallbackNotificationId ? [fallbackNotificationId] : []);
+
+    notifications.forEach((notification) => {
+      if (notification.id === fallbackNotificationId || matchesNotification(notification)) {
+        idsToDelete.add(notification.id);
+      }
+    });
+
+    setNotifications((previousNotifications) =>
+      previousNotifications.filter(
+        (notification) => notification.id !== fallbackNotificationId && !matchesNotification(notification)
+      )
+    );
+    Promise.all([...idsToDelete].map((notificationId) => deleteDbItem(DB_KEYS.notifications, notificationId))).catch(
+      () => undefined
+    );
   };
 
   const uploadVoiceDraftToStorage = async (voice, messageId) => {
@@ -2415,10 +2625,10 @@ function App() {
         ownerId: currentUser.id
       });
       uploadedVoice = await uploadVoiceDraftToStorage(voice, messageId);
-    } catch {
+    } catch (error) {
       return {
         success: false,
-        message: 'The message attachment could not be uploaded. Run the Supabase setup SQL, then try again.'
+        message: getAttachmentUploadErrorMessage(error, 'message attachment')
       };
     }
 

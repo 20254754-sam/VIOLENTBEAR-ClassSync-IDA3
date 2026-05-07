@@ -100,3 +100,9 @@ The app still needs the SQL setup and one-time attachment migration before the l
 If Supabase shows warnings for old `classsync_*` policies or public bucket listing, run [supabase/luminote-security-cleanup.sql](/C:/Users/Asus/Desktop/Samem%20Files/FinalAptech/Luminote/supabase/luminote-security-cleanup.sql) in the SQL Editor.
 
 This locks down legacy backup tables, removes the broad Storage listing policy, and replaces literal `true` write policies with row-shape checks. The current app still uses anonymous browser access, so a full security hardening pass should use Supabase Auth later.
+
+## 8. Storage upload repair
+
+If note or message uploads show a Storage/RLS error, run [supabase/luminote-storage-fix.sql](/C:/Users/Asus/Desktop/Samem%20Files/FinalAptech/Luminote/supabase/luminote-storage-fix.sql) in the SQL Editor.
+
+This only repairs the `luminote-attachments` bucket and its anonymous upload/update/delete policies. It does not delete users, notes, rooms, posts, messages, reports, or existing files.

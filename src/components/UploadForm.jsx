@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { ATTACHMENT_FILE_SIZE_LIMIT_BYTES, formatFileSize } from '../lib/classsyncDb';
 
 const SUBJECTS = [
   'Web Development',
@@ -144,6 +145,25 @@ const UploadForm = ({ onSubmit, editingNote, onCancelEdit }) => {
       return;
     }
 
+    const oversizedFiles = selectedFiles.filter((file) => file.size > ATTACHMENT_FILE_SIZE_LIMIT_BYTES);
+
+    if (oversizedFiles.length > 0) {
+      const oversizedNames = oversizedFiles
+        .slice(0, 3)
+        .map((file) => `${file.name} (${formatFileSize(file.size)})`)
+        .join(', ');
+      const extraCount = oversizedFiles.length > 3 ? ` and ${oversizedFiles.length - 3} more` : '';
+
+      setErrors((currentErrors) => ({
+        ...currentErrors,
+        attachments: `Each file must be ${formatFileSize(
+          ATTACHMENT_FILE_SIZE_LIMIT_BYTES
+        )} or smaller. Please remove: ${oversizedNames}${extraCount}.`
+      }));
+      event.target.value = '';
+      return;
+    }
+
     try {
       const nextAttachments = await Promise.all(selectedFiles.map(readFileAsDataUrl));
       setErrors((currentErrors) => ({ ...currentErrors, attachments: null }));
@@ -203,10 +223,10 @@ const UploadForm = ({ onSubmit, editingNote, onCancelEdit }) => {
               : null
         })
       );
-    } catch {
+    } catch (error) {
       result = {
         success: false,
-        message: 'The attachments could not be uploaded. Please run the Supabase setup SQL and try again.'
+        message: error?.message || 'The attachments could not be uploaded. Please try again.'
       };
     } finally {
       setIsSaving(false);
@@ -329,7 +349,7 @@ const UploadForm = ({ onSubmit, editingNote, onCancelEdit }) => {
           <label htmlFor="attachments" className="attachment-picker">
             <span className="attachment-picker-title">Attach image or file</span>
             <small className="attachment-picker-help">
-              Approved attachments can be opened from the note page by students and admins.
+              Approved attachments can be opened from the note page. Max {formatFileSize(ATTACHMENT_FILE_SIZE_LIMIT_BYTES)} each.
             </small>
           </label>
           <input

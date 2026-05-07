@@ -773,6 +773,9 @@ html[data-theme='dark'] .nav-icon-button:active {
   position: absolute;
   top: 50%;
   right: 0.72rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 34px;
   height: 34px;
   min-width: 34px;
@@ -783,6 +786,18 @@ html[data-theme='dark'] .nav-icon-button:active {
   color: var(--accent-strong);
   box-shadow: none;
   transform: translateY(-50%);
+  z-index: 2;
+}
+
+.search-clear-button:hover,
+.search-clear-button:focus-visible {
+  transform: translateY(-50%) scale(1.04);
+  filter: brightness(1.06) saturate(1.05);
+  box-shadow: 0 10px 22px rgba(91, 116, 214, 0.16);
+}
+
+.search-clear-button:active {
+  transform: translateY(-50%) scale(0.96);
 }
 
 .search-input,
@@ -4456,7 +4471,7 @@ html[data-theme='dark'] .app-footer {
 
   .browse-page .search-input {
     min-height: 52px;
-    margin-bottom: 1rem;
+    margin-bottom: 0;
     padding: 0 1rem;
     border-radius: 18px;
     font-size: 0.9rem;
