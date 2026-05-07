@@ -2751,6 +2751,18 @@ html[data-theme='dark'] .forum-comment-form textarea {
   opacity: 0.88;
 }
 
+.notification-delete-button {
+  border-color: rgba(214, 82, 82, 0.2);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.notification-delete-button:hover {
+  border-color: rgba(214, 82, 82, 0.34);
+  background: rgba(214, 82, 82, 0.18);
+  color: var(--danger);
+}
+
 .notification-empty-state {
   width: min(100%, 720px);
   margin: 0 auto;

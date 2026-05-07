@@ -10,7 +10,7 @@ const formatDateTime = (dateValue) =>
     minute: '2-digit'
   });
 
-const NotificationsPage = ({ currentUser, items, onMarkRead, onMarkAllRead }) => {
+const NotificationsPage = ({ currentUser, items, onDeleteNotification, onMarkRead, onMarkAllRead }) => {
   const unreadCount = items.filter((item) => !item.readAt).length;
   const actionableNotifications = items.filter((item) => item.kind !== 'report' && !item.readAt).length;
 
@@ -83,6 +83,15 @@ const NotificationsPage = ({ currentUser, items, onMarkRead, onMarkAllRead }) =>
                     {item.kind !== 'report' && !item.readAt && (
                       <button type="button" className="secondary-button" onClick={() => onMarkRead(item.id)}>
                         Mark as read
+                      </button>
+                    )}
+                    {item.kind !== 'report' && item.readAt && (
+                      <button
+                        type="button"
+                        className="secondary-button notification-delete-button"
+                        onClick={() => onDeleteNotification(item.id)}
+                      >
+                        Delete
                       </button>
                     )}
                   </div>

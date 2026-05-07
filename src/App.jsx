@@ -2924,6 +2924,21 @@ function App() {
     );
   };
 
+  const handleDeleteNotification = (notificationId) => {
+    const targetNotification = notifications.find(
+      (notification) => notification.id === notificationId && notification.targetUserId === currentUser?.id
+    );
+
+    if (!targetNotification) {
+      return;
+    }
+
+    setNotifications((previousNotifications) =>
+      previousNotifications.filter((notification) => notification.id !== notificationId)
+    );
+    deleteDbItem(DB_KEYS.notifications, notificationId).catch(() => undefined);
+  };
+
   const handleCreateReport = ({ targetId, targetType, targetTitle, roomId = null, reason }) => {
     if (!currentUser) {
       return;
@@ -3571,6 +3586,7 @@ function App() {
               <NotificationsPage
                 currentUser={currentUser}
                 items={inboxItems}
+                onDeleteNotification={handleDeleteNotification}
                 onMarkRead={handleMarkNotificationRead}
                 onMarkAllRead={handleMarkAllNotificationsRead}
               />
