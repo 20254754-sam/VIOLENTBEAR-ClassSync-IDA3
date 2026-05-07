@@ -8,10 +8,6 @@ set
   file_size_limit = excluded.file_size_limit;
 
 drop policy if exists "Luminote attachments are publicly readable" on storage.objects;
-create policy "Luminote attachments are publicly readable"
-on storage.objects
-for select
-using (bucket_id = 'luminote-attachments');
 
 drop policy if exists "Luminote attachments can be uploaded by everyone" on storage.objects;
 create policy "Luminote attachments can be uploaded by everyone"
@@ -149,6 +145,16 @@ begin
   end loop;
 end $$;
 
+create or replace function public.luminote_payload_matches_row(row_id text, row_payload jsonb)
+returns boolean
+language sql
+immutable
+set search_path = ''
+as $$
+  select jsonb_typeof(row_payload) = 'object'
+    and coalesce(row_payload ->> 'id', row_payload ->> 'playerKey') = row_id;
+$$;
+
 drop policy if exists "App state is readable by everyone" on public.app_state;
 create policy "App state is readable by everyone"
 on public.app_state
@@ -156,217 +162,55 @@ for select
 using (true);
 
 drop policy if exists "App state can be inserted by everyone" on public.app_state;
-create policy "App state can be inserted by everyone"
-on public.app_state
-for insert
-with check (true);
-
 drop policy if exists "App state can be updated by everyone" on public.app_state;
-create policy "App state can be updated by everyone"
-on public.app_state
-for update
-using (true)
-with check (true);
 
-drop policy if exists "Luminote users are readable by everyone" on public.luminote_users;
-create policy "Luminote users are readable by everyone"
-on public.luminote_users
-for select
-using (true);
+do $$
+declare
+  policy_record record;
+  table_name text;
+begin
+  foreach table_name in array array[
+    'luminote_users',
+    'luminote_notes',
+    'luminote_forum_posts',
+    'luminote_game_scores',
+    'luminote_messages',
+    'luminote_rooms',
+    'luminote_reports',
+    'luminote_notifications'
+  ]
+  loop
+    for policy_record in
+      select policyname
+      from pg_policies
+      where schemaname = 'public'
+        and tablename = table_name
+    loop
+      execute format('drop policy if exists %I on public.%I', policy_record.policyname, table_name);
+    end loop;
 
-drop policy if exists "Luminote users can be inserted by everyone" on public.luminote_users;
-create policy "Luminote users can be inserted by everyone"
-on public.luminote_users
-for insert
-with check (true);
-
-drop policy if exists "Luminote users can be updated by everyone" on public.luminote_users;
-create policy "Luminote users can be updated by everyone"
-on public.luminote_users
-for update
-using (true)
-with check (true);
-
-drop policy if exists "Luminote users can be deleted by everyone" on public.luminote_users;
-create policy "Luminote users can be deleted by everyone"
-on public.luminote_users
-for delete
-using (true);
-
-drop policy if exists "Luminote notes are readable by everyone" on public.luminote_notes;
-create policy "Luminote notes are readable by everyone"
-on public.luminote_notes
-for select
-using (true);
-
-drop policy if exists "Luminote notes can be inserted by everyone" on public.luminote_notes;
-create policy "Luminote notes can be inserted by everyone"
-on public.luminote_notes
-for insert
-with check (true);
-
-drop policy if exists "Luminote notes can be updated by everyone" on public.luminote_notes;
-create policy "Luminote notes can be updated by everyone"
-on public.luminote_notes
-for update
-using (true)
-with check (true);
-
-drop policy if exists "Luminote notes can be deleted by everyone" on public.luminote_notes;
-create policy "Luminote notes can be deleted by everyone"
-on public.luminote_notes
-for delete
-using (true);
-
-drop policy if exists "Luminote forum posts are readable by everyone" on public.luminote_forum_posts;
-create policy "Luminote forum posts are readable by everyone"
-on public.luminote_forum_posts
-for select
-using (true);
-
-drop policy if exists "Luminote forum posts can be inserted by everyone" on public.luminote_forum_posts;
-create policy "Luminote forum posts can be inserted by everyone"
-on public.luminote_forum_posts
-for insert
-with check (true);
-
-drop policy if exists "Luminote forum posts can be updated by everyone" on public.luminote_forum_posts;
-create policy "Luminote forum posts can be updated by everyone"
-on public.luminote_forum_posts
-for update
-using (true)
-with check (true);
-
-drop policy if exists "Luminote forum posts can be deleted by everyone" on public.luminote_forum_posts;
-create policy "Luminote forum posts can be deleted by everyone"
-on public.luminote_forum_posts
-for delete
-using (true);
-
-drop policy if exists "Luminote game scores are readable by everyone" on public.luminote_game_scores;
-create policy "Luminote game scores are readable by everyone"
-on public.luminote_game_scores
-for select
-using (true);
-
-drop policy if exists "Luminote game scores can be inserted by everyone" on public.luminote_game_scores;
-create policy "Luminote game scores can be inserted by everyone"
-on public.luminote_game_scores
-for insert
-with check (true);
-
-drop policy if exists "Luminote game scores can be updated by everyone" on public.luminote_game_scores;
-create policy "Luminote game scores can be updated by everyone"
-on public.luminote_game_scores
-for update
-using (true)
-with check (true);
-
-drop policy if exists "Luminote game scores can be deleted by everyone" on public.luminote_game_scores;
-create policy "Luminote game scores can be deleted by everyone"
-on public.luminote_game_scores
-for delete
-using (true);
-
-drop policy if exists "Luminote messages are readable by everyone" on public.luminote_messages;
-create policy "Luminote messages are readable by everyone"
-on public.luminote_messages
-for select
-using (true);
-
-drop policy if exists "Luminote messages can be inserted by everyone" on public.luminote_messages;
-create policy "Luminote messages can be inserted by everyone"
-on public.luminote_messages
-for insert
-with check (true);
-
-drop policy if exists "Luminote messages can be updated by everyone" on public.luminote_messages;
-create policy "Luminote messages can be updated by everyone"
-on public.luminote_messages
-for update
-using (true)
-with check (true);
-
-drop policy if exists "Luminote messages can be deleted by everyone" on public.luminote_messages;
-create policy "Luminote messages can be deleted by everyone"
-on public.luminote_messages
-for delete
-using (true);
-
-drop policy if exists "Luminote rooms are readable by everyone" on public.luminote_rooms;
-create policy "Luminote rooms are readable by everyone"
-on public.luminote_rooms
-for select
-using (true);
-
-drop policy if exists "Luminote rooms can be inserted by everyone" on public.luminote_rooms;
-create policy "Luminote rooms can be inserted by everyone"
-on public.luminote_rooms
-for insert
-with check (true);
-
-drop policy if exists "Luminote rooms can be updated by everyone" on public.luminote_rooms;
-create policy "Luminote rooms can be updated by everyone"
-on public.luminote_rooms
-for update
-using (true)
-with check (true);
-
-drop policy if exists "Luminote rooms can be deleted by everyone" on public.luminote_rooms;
-create policy "Luminote rooms can be deleted by everyone"
-on public.luminote_rooms
-for delete
-using (true);
-
-drop policy if exists "Luminote reports are readable by everyone" on public.luminote_reports;
-create policy "Luminote reports are readable by everyone"
-on public.luminote_reports
-for select
-using (true);
-
-drop policy if exists "Luminote reports can be inserted by everyone" on public.luminote_reports;
-create policy "Luminote reports can be inserted by everyone"
-on public.luminote_reports
-for insert
-with check (true);
-
-drop policy if exists "Luminote reports can be updated by everyone" on public.luminote_reports;
-create policy "Luminote reports can be updated by everyone"
-on public.luminote_reports
-for update
-using (true)
-with check (true);
-
-drop policy if exists "Luminote reports can be deleted by everyone" on public.luminote_reports;
-create policy "Luminote reports can be deleted by everyone"
-on public.luminote_reports
-for delete
-using (true);
-
-drop policy if exists "Luminote notifications are readable by everyone" on public.luminote_notifications;
-create policy "Luminote notifications are readable by everyone"
-on public.luminote_notifications
-for select
-using (true);
-
-drop policy if exists "Luminote notifications can be inserted by everyone" on public.luminote_notifications;
-create policy "Luminote notifications can be inserted by everyone"
-on public.luminote_notifications
-for insert
-with check (true);
-
-drop policy if exists "Luminote notifications can be updated by everyone" on public.luminote_notifications;
-create policy "Luminote notifications can be updated by everyone"
-on public.luminote_notifications
-for update
-using (true)
-with check (true);
-
-drop policy if exists "Luminote notifications can be deleted by everyone" on public.luminote_notifications;
-create policy "Luminote notifications can be deleted by everyone"
-on public.luminote_notifications
-for delete
-using (true);
+    execute format(
+      'create policy %I on public.%I for select using (true)',
+      table_name || ' public read',
+      table_name
+    );
+    execute format(
+      'create policy %I on public.%I for insert with check (public.luminote_payload_matches_row(id, payload))',
+      table_name || ' insert matching payload id',
+      table_name
+    );
+    execute format(
+      'create policy %I on public.%I for update using (public.luminote_payload_matches_row(id, payload)) with check (public.luminote_payload_matches_row(id, payload))',
+      table_name || ' update matching payload id',
+      table_name
+    );
+    execute format(
+      'create policy %I on public.%I for delete using (public.luminote_payload_matches_row(id, payload))',
+      table_name || ' delete matching payload id',
+      table_name
+    );
+  end loop;
+end $$;
 
 insert into public.luminote_users (id, payload, created_at, updated_at)
 select
@@ -490,6 +334,37 @@ begin
         table_pair.new_table,
         table_pair.new_table
       );
+    end if;
+  end loop;
+end $$;
+
+do $$
+declare
+  legacy_policy record;
+  legacy_table text;
+begin
+  foreach legacy_table in array array[
+    'classsync_users',
+    'classsync_notes',
+    'classsync_forum_posts',
+    'classsync_game_scores',
+    'classsync_messages',
+    'classsync_rooms',
+    'classsync_reports',
+    'classsync_notifications'
+  ]
+  loop
+    if to_regclass(format('public.%I', legacy_table)) is not null then
+      execute format('alter table public.%I enable row level security', legacy_table);
+
+      for legacy_policy in
+        select policyname
+        from pg_policies
+        where schemaname = 'public'
+          and tablename = legacy_table
+      loop
+        execute format('drop policy if exists %I on public.%I', legacy_policy.policyname, legacy_table);
+      end loop;
     end if;
   end loop;
 end $$;

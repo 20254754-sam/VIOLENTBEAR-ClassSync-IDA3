@@ -94,3 +94,9 @@ The repo now includes:
 - route-scoped loading/realtime so the app does not refresh every large table on every page load
 
 The app still needs the SQL setup and one-time attachment migration before the live shared database is fully optimized.
+
+## 7. Security Advisor cleanup
+
+If Supabase shows warnings for old `classsync_*` policies or public bucket listing, run [supabase/luminote-security-cleanup.sql](/C:/Users/Asus/Desktop/Samem%20Files/FinalAptech/Luminote/supabase/luminote-security-cleanup.sql) in the SQL Editor.
+
+This locks down legacy backup tables, removes the broad Storage listing policy, and replaces literal `true` write policies with row-shape checks. The current app still uses anonymous browser access, so a full security hardening pass should use Supabase Auth later.
