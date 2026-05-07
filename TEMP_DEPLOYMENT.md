@@ -3,13 +3,13 @@
 This project is ready for a quick GitHub Pages deployment.
 
 Repository:
-- `https://github.com/20254754-sam/VIOLENTBEAR-ClassSync-IDA3`
+- `https://github.com/20254754-sam/VIOLENTBEAR-Luminote-IDA3`
 
 Expected GitHub Pages URL after deploy:
-- `https://20254754-sam.github.io/VIOLENTBEAR-ClassSync-IDA3/`
+- `https://20254754-sam.github.io/VIOLENTBEAR-Luminote-IDA3/`
 
 Recovery scanner URL to send to users:
-- `https://20254754-sam.github.io/VIOLENTBEAR-ClassSync-IDA3/#/recovery`
+- `https://20254754-sam.github.io/VIOLENTBEAR-Luminote-IDA3/#/recovery`
 
 ## One-time GitHub Pages setup
 
@@ -39,7 +39,7 @@ That command will:
 
 Send them this exact link:
 
-`https://20254754-sam.github.io/VIOLENTBEAR-ClassSync-IDA3/#/recovery`
+`https://20254754-sam.github.io/VIOLENTBEAR-Luminote-IDA3/#/recovery`
 
 Tell them:
 - open the link using the same device and same browser they used before
