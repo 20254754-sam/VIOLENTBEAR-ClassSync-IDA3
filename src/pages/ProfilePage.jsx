@@ -295,7 +295,7 @@ const ProfilePage = ({
               <ReportIcon />
             </button>
           )}
-          <p>
+          <p className="profile-email-detail-row">
             <strong>Luminote email:</strong>
             <span className="profile-detail-value profile-detail-email" data-full-value={profileUser.email} tabIndex={0}>
               <span className="profile-detail-email-text">{profileUser.email}</span>
