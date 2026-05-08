@@ -49,6 +49,19 @@ const readProfileImage = async (file) => {
   }
 };
 
+const ReportIcon = () => (
+  <svg aria-hidden="true" viewBox="0 0 24 24">
+    <path
+      d="M5 21V5.8c0-.8.6-1.4 1.4-1.4h5.3c.7 0 1.1.3 1.6.7.4.4.8.7 1.5.7H19v9h-4.2c-.7 0-1.1-.3-1.6-.7-.4-.4-.8-.7-1.5-.7H5"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    />
+  </svg>
+);
+
 const ProfilePage = ({
   notes,
   users,
@@ -60,7 +73,8 @@ const ProfilePage = ({
   onPreviewProfilePicture,
   onChangePassword,
   onAdminToggleUserStatus,
-  onAdminDeleteUser
+  onAdminDeleteUser,
+  onReport
 }) => {
   const { userId } = useParams();
   const location = useLocation();
@@ -102,6 +116,7 @@ const ProfilePage = ({
   const [adminAccountFeedback, setAdminAccountFeedback] = useState('');
   const [isPasswordEditorOpen, setIsPasswordEditorOpen] = useState(false);
   const [isProfileImageProcessing, setIsProfileImageProcessing] = useState(false);
+  const [isProfilePictureLightboxOpen, setIsProfilePictureLightboxOpen] = useState(false);
 
   useEffect(() => {
     setProfileForm({
@@ -200,6 +215,14 @@ const ProfilePage = ({
     }
   };
 
+  const handleReportProfile = () => {
+    onReport?.({
+      targetId: profileUser.id,
+      targetType: 'user',
+      targetTitle: profileUser.name
+    });
+  };
+
   if (!profileUser) {
     return (
       <div className="page">
@@ -231,7 +254,18 @@ const ProfilePage = ({
 
       <div className="profile-hero profile-hero-expanded">
         <div className="profile-hero-main">
-          <UserAvatar user={{ ...profileUser, profilePicture: profileImagePreview }} size="xl" />
+          {!isOwnProfile ? (
+            <button
+              type="button"
+              className="profile-avatar-button"
+              onClick={() => setIsProfilePictureLightboxOpen(true)}
+              aria-label={`Open ${profileUser.name}'s profile picture`}
+            >
+              <UserAvatar user={{ ...profileUser, profilePicture: profileImagePreview }} size="xl" />
+            </button>
+          ) : (
+            <UserAvatar user={{ ...profileUser, profilePicture: profileImagePreview }} size="xl" />
+          )}
           <div>
             <h2>{profileUser.name}</h2>
             <p>{isPrivateToViewer ? 'This profile is private, but shared notes remain visible.' : profileUser.bio}</p>
@@ -250,7 +284,23 @@ const ProfilePage = ({
           </div>
         </div>
         <div className="profile-details-panel">
-          <p><strong>Luminote email:</strong> {profileUser.email}</p>
+          {!isOwnProfile && (
+            <button
+              type="button"
+              className="profile-report-icon-button"
+              aria-label={`Report ${profileUser.name}`}
+              title="Report user"
+              onClick={handleReportProfile}
+            >
+              <ReportIcon />
+            </button>
+          )}
+          <p>
+            <strong>Luminote email:</strong>
+            <span className="profile-detail-value profile-detail-email" data-full-value={profileUser.email} tabIndex={0}>
+              <span className="profile-detail-email-text">{profileUser.email}</span>
+            </span>
+          </p>
           <p><strong>Course:</strong> {isPrivateToViewer ? 'Private' : profileUser.course || 'Not set yet'}</p>
           <p><strong>Year level:</strong> {isPrivateToViewer ? 'Private' : profileUser.yearLevel || 'Not set yet'}</p>
           <p><strong>Visibility:</strong> {profileUser.profileVisibility}</p>
@@ -258,6 +308,37 @@ const ProfilePage = ({
           <p><strong>Status:</strong> {profileUser.isActive === false ? 'Deactivated' : 'Active'}</p>
         </div>
       </div>
+
+      {!isOwnProfile && isProfilePictureLightboxOpen && (
+        <div
+          className="profile-avatar-lightbox-overlay"
+          role="presentation"
+          onClick={() => setIsProfilePictureLightboxOpen(false)}
+        >
+          <section
+            className="profile-avatar-lightbox"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${profileUser.name}'s profile picture`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="profile-avatar-lightbox-header">
+              <div>
+                <span className="dashboard-strip-label">Profile picture</span>
+                <h3>{profileUser.name}</h3>
+              </div>
+              <button
+                type="button"
+                aria-label="Close profile picture"
+                onClick={() => setIsProfilePictureLightboxOpen(false)}
+              >
+                x
+              </button>
+            </div>
+            <img src={profileImagePreview} alt={`${profileUser.name} profile`} />
+          </section>
+        </div>
+      )}
 
       {canAdminManageProfile && (
         <section className="profile-admin-danger-zone">

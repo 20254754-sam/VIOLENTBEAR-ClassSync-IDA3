@@ -524,7 +524,13 @@ const AdminPage = ({
                         Reported by {report.reporterName} on {formatDate(report.createdAt)}
                       </p>
                     </div>
-                    <span className="status-pill status-rejected">{report.targetType === 'note' ? 'note report' : 'forum report'}</span>
+                    <span className="status-pill status-rejected">
+                      {report.targetType === 'note'
+                        ? 'note report'
+                        : report.targetType === 'user'
+                          ? 'profile report'
+                          : 'forum report'}
+                    </span>
                   </div>
                   <p className="admin-report-reason">{report.reason}</p>
                   <div className="admin-review-actions">
@@ -535,6 +541,10 @@ const AdminPage = ({
                         className="card-link-button"
                       >
                         Open reported note
+                      </Link>
+                    ) : report.targetType === 'user' ? (
+                      <Link to={`/users/${report.targetId}`} state={{ from: '/admin' }} className="card-link-button">
+                        Open reported profile
                       </Link>
                     ) : (
                       <Link to={report.roomId ? `/rooms/${report.roomId}` : '/forum'} className="card-link-button">

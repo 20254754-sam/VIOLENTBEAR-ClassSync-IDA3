@@ -3408,14 +3408,24 @@ function App() {
       return;
     }
 
+    const reportTargetLabel =
+      targetType === 'forum-post'
+        ? 'forum post'
+        : targetType === 'user'
+          ? 'profile'
+          : 'note';
+
     openModal({
       variant: 'danger',
-      title: `Report this ${targetType === 'forum-post' ? 'forum post' : 'note'}?`,
+      title: `Report this ${reportTargetLabel}?`,
       message: `Tell the admin what is wrong with "${targetTitle}".`,
       confirmLabel: 'Submit report',
       requireComment: true,
       commentLabel: 'Report reason',
-      commentPlaceholder: 'Example: Spam, inappropriate content, copied material, or misleading information.',
+      commentPlaceholder:
+        targetType === 'user'
+          ? 'Example: Fake account, harassment, inappropriate profile, or suspicious behavior.'
+          : 'Example: Spam, inappropriate content, copied material, or misleading information.',
       onConfirm: (comment) => {
         handleCreateReport({
           targetId,
@@ -4119,6 +4129,7 @@ function App() {
                 onChangePassword={handleChangePassword}
                 onAdminToggleUserStatus={requestAdminToggleUserStatus}
                 onAdminDeleteUser={requestAdminDeleteUser}
+                onReport={requestReportItem}
               />
             }
           />
@@ -4137,6 +4148,7 @@ function App() {
                 onChangePassword={handleChangePassword}
                 onAdminToggleUserStatus={requestAdminToggleUserStatus}
                 onAdminDeleteUser={requestAdminDeleteUser}
+                onReport={requestReportItem}
               />
             }
           />
