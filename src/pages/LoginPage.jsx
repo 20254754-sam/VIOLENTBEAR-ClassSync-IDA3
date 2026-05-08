@@ -841,7 +841,7 @@ const ClassBlocksGame = ({ player, leaderboard, onRecordScore, onExit }) => {
       <div className="classblocks-header">
         <div>
           <p className="auth-eyebrow">Unlocked mini game</p>
-          <h2>ClassBlocks</h2>
+          <h2>LumiBlocks</h2>
         </div>
         <div className="classblocks-header-actions">
           <div className="classblocks-score-stack">
